@@ -204,12 +204,14 @@ DrillDown.Engine = (() => {
     { id: 'void_shard', name: 'Void Shard',  baseValue: 15, emoji: '🔮', minDepth: 300 },
   ];
 
-  // Pick a random commodity weighted toward depth. Shallow depths produce mostly
-  // iron; deeper depths shift toward higher-value goods.
+  // Pick a random commodity for the given depth. Deeper depths unlock pricier goods,
+  // but the cheap commodities stay the most common — raising the random to a power
+  // biases the pick toward the earlier (cheaper) entries, so expensive drops (diamond,
+  // void shard) remain an occasional treat. The slot-based cargo (which discards the
+  // cheapest when full) is what lets a long run accumulate the rare expensive finds.
   function commodityForDepth(depth) {
     const available = COMMODITIES.filter(c => depth >= c.minDepth);
-    // Heavily weight the cheapest available, with a small chance of the best.
-    const idx = Math.floor(Math.random() * Math.max(1, Math.floor(available.length * 2.5)));
+    const idx = Math.floor(Math.pow(Math.random(), 2.5) * available.length);
     return available[Math.min(idx, available.length - 1)];
   }
 

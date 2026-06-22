@@ -1090,7 +1090,16 @@ DrillDown.UI = (() => {
           <h3>🔧 Crafting & Fragments</h3>
           <p>Ancient caches drop <b>fragments</b> — collect enough to craft a full part:<br>
           <span style="color:#74b9ff">■ Rare</span> — <b>2 fragments</b> to combine (also available in shop)<br>
-          <span style="color:#ff6b6b">■ Unique</span> — <b>3 fragments</b> to combine (craft-only, strongest tier)</p>
+          <span style="color:#ff6b6b">■ Unique</span> — <b>3 fragments</b> to combine (craft-only, strongest tier). Uniques are powerful but come with trade-offs (extra heat, lower speed) — they're build-defining choices, not free upgrades.</p>
+        </div>
+        <div class="help-section">
+          <h3>⬆ Mk Upgrades</h3>
+          <p>Hold <b>2+ copies</b> of the same part and an <b>⬆ Mk II</b> button appears on its inventory stack. Combine two copies + gold to forge a stronger tier: <b>Mk II → Mk III → Mk IV</b>. One click rolls a whole stack up as far as your copies and gold allow (e.g. 4× a part → Mk III, 8× → Mk IV).</p>
+          <p><b>Diminishing returns:</b> very high <b>drill</b>, <b>HP</b>, and <b>armor</b> are softly capped — they keep improving, but each point is worth less once you're stacked high. Cooling is <em>not</em> capped, so you can always keep heat in check. The lesson: a balanced rig beats dumping everything into one stat.</p>
+        </div>
+        <div class="help-section">
+          <h3>🏪 Shop Stock Scales</h3>
+          <p>The shop's stock improves as your <b>best depth</b> grows — commons give way to rares, and at extreme depth (300m+) a premium <b>unique</b> slot appears so you can buy one outright instead of grinding fragments.</p>
         </div>
         <div class="help-section">
           <h3>🔗 Synergies (place parts side-by-side)</h3>
