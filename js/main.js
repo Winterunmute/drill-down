@@ -11,7 +11,7 @@ DrillDown.Game = (() => {
       inventory: ['basic_drill', 'small_fan', 'light_plating', 'cargo_pod'],
       fragments: {},
       recycleProgress: 0,
-      returnPolicy: { cargoFull: true, hpPct: 0 },
+      returnPolicy: { cargoFull: true, hpPct: 0.25 },
       milestones: [],
       shop: Eng.generateShop(1),
       runNumber: 1,

@@ -437,7 +437,7 @@ DrillDown.UI = (() => {
 
   function renderWorkshop() {
     const gs = DrillDown.Game.state;
-    if (!gs.returnPolicy) gs.returnPolicy = { cargoFull: true, hpPct: 0 };
+    if (!gs.returnPolicy) gs.returnPolicy = { cargoFull: true, hpPct: 0.25 };
     if (gs.recycleProgress == null) gs.recycleProgress = 0;
     showScreen('workshop');
     const left = document.getElementById('workshop-left');
@@ -739,7 +739,7 @@ DrillDown.UI = (() => {
     `;
 
     const stats = Eng.computeStats(gs.grid);
-    const policy = gs.returnPolicy || { cargoFull: true, hpPct: 0 };
+    const policy = gs.returnPolicy || { cargoFull: true, hpPct: 0.25 };
     const result = Eng.simulateRun(stats, 0, policy);
 
     const logDiv = document.getElementById('drill-log');
@@ -938,8 +938,9 @@ DrillDown.UI = (() => {
           <p><b>❤ HP</b> — Health. Hits 0 = robot destroyed. Armor reduces each hit.</p>
           <p><b>🛡 Armor</b> — Subtracted from enemy damage. Place armor next to armor for +3 HP each.</p>
           <p><b>📦 Cargo</b> — Ore capacity. Full cargo = missed loot opportunities.</p>
-          <p><b>⚡ Speed</b> — Multiple depth ticks per step. Faster = more progress, more events.</p>
+          <p><b>⚡ Speed</b> — Depth steps per tick. Faster = more progress, but more heat and more events per second.</p>
           <p><b>📡 Detect</b> — Higher chance to find ore veins, rare crystals, and ancient caches.</p>
+          <p><b>⚖ Trade-offs</b> — Some parts have a downside: heavy armor lowers speed, and the Overclocked Drill runs very hot. Weigh the cost against the gain.</p>
         </div>
         <div class="help-section">
           <h3>🗺️ Grid & Placement</h3>

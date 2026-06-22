@@ -294,7 +294,7 @@ DrillDown.Engine = (() => {
 
   // -- Simulation --
   function simulateRun(robotStats, maxDepth, policy) {
-    policy = policy || { cargoFull: true, hpPct: 0 };
+    policy = policy || { cargoFull: true, hpPct: 0.25 };
     const log = [];
     let depth = (maxDepth || 0) + 1;
     let hp = robotStats.hp;
@@ -508,7 +508,7 @@ DrillDown.Engine = (() => {
         inventory: state.inventory,
         fragments: state.fragments || {},
         recycleProgress: state.recycleProgress || 0,
-        returnPolicy: state.returnPolicy || { cargoFull: true, hpPct: 0 },
+        returnPolicy: state.returnPolicy || { cargoFull: true, hpPct: 0.25 },
         milestones: state.milestones || [],
         runNumber: state.runNumber,
         lastDepth: state.lastDepth,

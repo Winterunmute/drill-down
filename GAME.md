@@ -49,7 +49,7 @@ Some parts carry **trade-offs** (a negative stat) for build identity — e.g. he
 | `heavy_plating` | Heavy Plating | defense | 1×2 | hp+18, spd−0.1 | 35g |
 | `cargo_pod` | Cargo Pod | utility | 2×2 | cargo+12 | 45g |
 
-### Uncommon (14)
+### Uncommon (13)
 | ID | Name | Type | Shape | Stats | Cost |
 |----|------|------|-------|-------|------|
 | `twin_bore` | Twin Bore | drill | 2×1 | drill+9, heat+5 | 65g |
@@ -79,7 +79,7 @@ Some parts carry **trade-offs** (a negative stat) for build identity — e.g. he
 | `deep_scanner` | Deep Scanner | utility | 2×1 | detect+20 | 140g |
 | `reactor_core` | Reactor Core | **core** | 1×1 | amplifies adjacent parts +25% | 190g |
 
-### Unique (5) — craft-only, 3 fragments
+### Unique (6) — craft-only, 3 fragments
 | ID | Name | Type | Shape | Stats |
 |----|------|------|-------|-------|
 | `singularity_core` | Singularity Core | **core** | 2×2 | amplifies adjacent parts +50% |
@@ -119,6 +119,8 @@ Computed from the grid. All additive. Base values before any parts.
 | ⚡ Speed | 1.0 | Depth steps per tick. Fractional = floor for actual steps. |
 | 📡 Detect | 0 | Flat bonus added to loot/event find chance (adds to % chance). |
 
+After summing parts, synergies, and core amplification, `computeStats` clamps to sane floors so part **trade-offs** (e.g. heavy armor's −speed) can't break a run: speed ≥ 0.3, cargo ≥ 1, HP ≥ 1, and drill/cooling/armor/detect ≥ 0.
+
 ---
 
 ## Simulation
@@ -152,7 +154,7 @@ Enemy names by depth: Rock Worm (<25m), Crystal Spider (<75m), Magma Drake (<150
 ## Economy
 
 - **Starting gold:** 100g
-- **Ore to gold:** ×1.5 on run completion
+- **Ore to gold:** ×2 on run completion (only if the drone surfaces)
 - **Void Crystals:** bonus gold (value×2)
 - **Shop restock:** each trip to the workshop after a run
 - **Shop slots:** 3 common + 2 uncommon + 1 rare (never unique)
@@ -198,7 +200,7 @@ Configured in the workshop. Checked every step during the simulation to decide w
 | Return when cargo full | Surfaces once ore = cargo capacity |
 | HP threshold (Off / 10% / 25% / 50%) | Surfaces when HP drops below that % of max |
 
-Setting a return policy is the only way to bank loot mid-run — if the drone is destroyed, carried ore and fragments are lost.
+Defaults for a new run: **return when cargo full** on, **emergency ascent at 25% HP**. Setting a return policy is the only way to bank loot mid-run — if the drone is destroyed, carried ore and fragments are lost.
 
 ## Fragment System
 
@@ -263,13 +265,14 @@ Each unique touching pair is scored once (undirected). In addition to these, **c
 ```
 drill-down/
 ├── index.html      # Shell with 3 screens + 2 overlays
-├── style.css       # All styling
+├── style.css       # All styling (712 lines)
+├── README.md       # Player & contributor overview
 ├── GAME.md         # This file
 ├── CLAUDE.md       # Dev instructions
 ├── js/
-│   ├── parts.js    # 35 part definitions + rarity colors (414 lines)
-│   ├── engine.js   # Grid, stats, simulation, synergies, shop, save/load (472 lines)
+│   ├── parts.js    # 36 part definitions + rarity colors (430 lines)
+│   ├── engine.js   # Grid, stats, simulation, synergies, recycling, shop, save/load (543 lines)
 │   ├── audio.js    # Web Audio API synthesized SFX (94 lines)
-│   ├── ui.js       # All DOM rendering, drag-drop, tooltips (962 lines)
-│   └── main.js     # State management, init, keyboard shortcuts (94 lines)
+│   ├── ui.js       # All DOM rendering, drag-drop, tooltips, recycle bin (1010 lines)
+│   └── main.js     # State management, init, keyboard shortcuts (95 lines)
 ```
