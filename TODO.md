@@ -1,0 +1,118 @@
+# Drill Down — TODO
+
+Ideas gathered from reading the full codebase. No priority implied by order — pick what's fun.
+
+## 🎯 Requested
+
+Ideas you specifically asked to add:
+
+- **Part upgrade system** — spend gold (or a new resource like "circuits" / "plasma") to permanently boost a part's stats. Several approaches:
+  - **Stat infusion** — pay escalating gold to add +1 to a chosen stat on a specific part instance. Tracked in state as `upgrades: { partId: { drillPower: 2, cooling: 1 } }`, applied in `computeStats`.
+  - **Mk II / tier upgrade** — combine 2 copies of the same base part + gold to produce a strictly better version (e.g. Basic Drill → Reinforced Drill). Could use a new `upgradeOf` field in `parts.js` pointing to the next tier, or auto-scale stats by a multiplier.
+  - **Gem sockets** — rare depth-only drops that slot into a part and add a secondary stat (e.g. "Heat Sink Gem: +2 cooling, +1 cargo"). Stored on the grid's `placed` metadata.
+  - Each approach adds a meaningful gold sink between runs and makes common parts stay relevant late-game instead of being recycled the moment you find a rare.
+
+- **Shop scales with progress** — once you've reached deeper zones, the shop's common/uncommon slots feel worthless since only unique (craft-only) parts move the needle. Ideas:
+  - Shop slots scale with best depth: deeper = higher chance to spawn rare parts, eventually 1–2 unique slots at extreme depths.
+  - Introduce "enhanced" shop variants — a part already in your inventory can appear at a discount or with a pre-applied upgrade (see part upgrade system above).
+  - Rare/unique parts in the shop cost a premium but save you the fragment grind.
+  - A secondary "black market" tab that unlocks after depth 100, selling rare parts for ore (not gold), or trading excess fragments for gold.
+
+- **Cargo rework: slot-based inventory, not a capacity cap** — currently cargo is a hard cap that once reached, you stop collecting ore entirely. This makes cargo the main run-ending bottleneck (more than HP or heat) once you have a decent build. Instead:
+  - Cargo becomes a **pool of slots** (e.g. 4 base + bonuses from parts).
+  - Each vein drops a specific **commodity** (iron ore, gold nugget, diamond, void shard) that takes 1 slot.
+  - When cargo is full and a new vein is found, the **cheapest item is auto-discarded** to make room. The log says: "Ore vein! +3 ore (discarded 2 iron to make room)."
+  - At surface, each commodity has a different sell price (iron = 1g, gold = 3g, diamond = 8g, void shard = 15g).
+  - This makes cargo still valuable (more slots = can hoard high-value items without constantly discarding cheap ones) but never a hard stop. The run ends when you surface or die, not when your cargo fills up at depth 80.
+  - Adds a passive mini-game: deeper = better commodities, so the optimal play is to survive long enough to replace cheap slots with expensive ones, then surface.
+  - Commodity quality scales with depth — iron is common everywhere, gold appears below 50m, diamonds below 150m, void shards below 300m. This gives a natural reason to push deeper: shallow runs still pay, but the real money is in the deep zones.
+
+## Gameplay & Content
+
+- **More core-type parts** — only 2 cores exist (Reactor, Singularity); a mid-tier uncommon/rare core with a smaller amp or secondary effect would fill out the type.
+- **Part trade-offs (negative stats)** — the code has clamp floors (`stats.speed = Math.max(0.3, stats.speed)`) and the help screen mentions trade-offs, but no part currently has negative stats. A "Heavy Chassis" with +HP/−speed or "Overclocked Drill" with +drill/+heatGen would make choices more interesting.
+- **More random events** — the event pool (crystal, cache, ore, enemy, vent, nothing) feels thin at depth. Geyser (forced ascent?), magma current (bonus speed for a few steps?), abandoned rig (free part?) would add variety.
+- **Depth-unique encounters** — boss enemies at zone boundaries (e.g. at depth 25, 75, 150, 300). Could award a guaranteed fragment or unique loot.
+- **Starting loadout selection** — let the player pick from a few starter rig configs or spend starting gold on initial parts.
+- **Part selling (direct)** — recycle gives small gold + salvage progress; there's no way to just sell for raw gold. A "sell" button on parts would help early game when you need cash fast.
+- **Shop reroll** — pay a small fee to refresh the shop without running a full descent.
+- **Cargo overflow mechanic** — once cargo is full, excess ore could be stashed at a penalty (e.g. 50% conversion to gold directly) so it never feels wasted.
+- **Speed as a risk/reward slider** — currently it's a stat you build; could invert some parts to give +detect or +cargo at the cost of −speed.
+- **Zone biomes / environmental modifiers** — each zone (Crust, Mantle, Outer Core…) could apply a unique rule to the simulation, so reaching a new depth tier feels like a real shift, not just bigger numbers:
+  - Mantle: magma pockets — heat vents twice as frequent.
+  - Lower Mantle: crushing pressure — cargo capacity reduced 20%.
+  - Outer Core: magnetic storms — detect halved.
+  - Inner Core: extreme density — drill power penalty doubled.
+  - Singularity: unstable space — random teleport ±10 depth each step.
+- **Part set bonuses** — equipping certain combinations (e.g. "Cryo Set: Cryo Unit + Cryo Chamber" or "Deep Set: Deep Scanner + Core Borer") grants an extra bonus on top of adjacency. Tracked in `computeStats` by checking which part IDs are on the grid.
+- **Event choices** — occasional branching decisions in the log that you click to resolve: "Collapsed tunnel ahead. [B]last through (+30 heat) or [D]rill around (+10 depth steps)." Adds interactive tension during the run.
+- **Unearthed relics** — one-run-only items found at depth (not permanent parts). "Ancient Power Cell: +15 drill power for 50 steps." Applied as a temporary stat modifier in `simulateRun`.
+- **Drone naming + graveyard** — name your rig before launch. Fallen drones get recorded on a memorial screen with name, depth, and cause of death. Builds attachment and makes losses sting (in a good way).
+- **Run seeds** — a seed string at the top of the run, sharable so you can replay or share the exact same event sequence.
+- **Depth-specific parts** — parts that only activate or appear below a certain depth threshold (e.g. "Magma Turbine: huge stats, only works below 150m"), encouraging mid-game inventory swaps.
+- **Enemy types with different mechanics** — beyond just damage numbers, enemies could have unique effects: poison (tick damage over time), shred (reduce armor for the zone), leech (steal cargo). Adds tactical build consideration.
+- **Negative synergies** — some type combos could debuff rather than buff (e.g. utility next to core slightly reduces amp). Makes placement more interesting than always cramming everything together.
+- **Repair stations / camps** — at milestone depths (25, 50, 75…), a brief optional stop where you can spend gold to repair HP, vent heat, or reorganize cargo. A breather and a tactical choice.
+- **Heat as a weapon** — a part that converts stored heat into damage against the next enemy. Risk/replay: you want high heat for the payoff, but high heat also hurts you.
+- **Run modifiers / mutators** — before launch, opt into a debuff for bonus rewards: "Broken Coolant (all cooling halved, but loot ×1.5)" or "Thin Crust (+50% enemy spawns, +50% ore)." Roguelite-style variety.
+- **Frenzy / momentum** — consecutive event types chain into bonuses: 3 loot events in a row → "Rich Vein!" bonus gold. 3 enemies in a row → "Swarm!" warning. Rewards consistency and adds emergent narrative.
+- **Workshop upgrades (non-grid)** — persistent upgrades that sit outside the rig: a "Sharpening Rig" that adds +1 to all drill power, or a "Smelter" that improves ore→gold conversion by 10%. New gold sink.
+- **Blueprint discovery** — a parallel resource track: finding 5 "blueprint fragments" (rare event) unlocks a new permanent recipe to craft a specific part from basic materials. Gives long-term goals beyond depth.
+- **Part durability** — parts accumulate wear over runs (tracked in state). They need gold to repair between runs, or they break mid-run. Makes common parts valuable as cheap replacements and creates an ongoing gold sink.
+- **Cascading grid damage** — when the drone takes heavy damage, a random placed part is destroyed and removed from the grid, potentially creating a chain reaction if it breaks a synergy or exposes a core.
+- **Legendary boss fights** — at major zone boundaries (depth 75, 150, 300, 500) a guaranteed unique enemy with a named attack and special loot table. Defeating it could award a one-time relic or a permanent upgrade.
+- **Trading post** — between runs, trade resources at unfavorable rates: 10 ore → 1 fragment, 50g → 1 blueprint fragment, 3 fragments → 1 random part. Lets you pivot resources you don't need.
+
+## UI / Presentation
+
+- **Pause during drill replay** — pause/resume button so you can read a log line before it scrolls away.
+- **Run history** — a log of last N runs with depth, zone, gold earned, cause of death. Stored in state.
+- **Part-count badge on stacked cards** — currently stacked cards show a visual "pile" but no count. Show ×N.
+- **Animation for fragment craft** — when fragments auto-combine, a brief celebration toast or card-flip would feel satisfying.
+- **Inline grid coordinates** — tiny row/col markers on the grid edges would help when planning complex layouts.
+- **Drag preview shows synergy highlights** — when hovering a part over the grid, temporarily highlight which placed parts would gain synergy.
+- **Keyboard shortcuts during drill** — Space to pause, S to surface, A to auto-skip.
+- **Filter/sort inventory** — with 35+ parts, a text filter or sort-by-type would help find specific parts quickly.
+- **Quick-start** — if a save exists, skip the title screen and go straight to the workshop.
+- **Log filters on drill screen** — filter the replay/enriched log by event type (enemies only, loot only) for post-run analysis.
+- **Status bar during drill** — compact HUD showing current depth, heat, HP, cargo in a single line that stays visible while the log scrolls.
+- **Confirmation on New Run** — "This will erase your current progress. Continue?" dialog.
+- **Dark mode toggle** — it's already dark, but a high-contrast / colorblind-friendly mode option.
+
+## Simulation & Balance
+
+- **Boss / elite enemies** — at milestone depths (25, 50, 75, 100…), a guaranteed tough enemy that can't be avoided but rewards extra gold or a fragment.
+- **Adaptive difficulty** — deeper runs could scale enemy damage faster but also increase ore values to keep the risk/reward curve tight.
+- **Part rebalance pass** — some parts (e.g. Treads vs Gyro, Deflector vs Nano Shield) are very close in cost/stat. A balance pass would make each feel more distinct.
+- **Faster rock-hardness scaling** — the current formula (`3 + depth×0.8 + sin×2`) means drills eventually outpace hardness. A steeper curve or step increases at zone boundaries would keep drill power relevant longer.
+- **Endless / void mode** — past 500m (The Singularity), an endless descent with no return policy, just accumulating score. Surfacing is impossible — the run ends when the drone dies. Leaderboard potential.
+- **Fragments lost on death should hurt more** — currently fragments are lost if the drone is destroyed, but the fragment display in the workshop shows only uncrafted fragments. Could show a "lost in the deep" counter to rub it in.
+
+## Meta-Progression
+
+- **Persistent rig upgrades** — spend gold on permanent starting grid size, extra starting inventory slots, or a "workshop upgrade" that boosts a stat floor.
+- **Prestige system** — reset gold and parts but earn a permanent bonus (starting detect, cargo multiplier, etc.) based on lifetime best depth.
+- **Milestone rewards beyond gold** — unlock cosmetics (color theme), starting part choices, or small passive bonuses.
+- **Lore fragments** — text snippets found at depth that piece together the story (why are we drilling? what's down there?). Purely cosmetic but gives the descent meaning.
+- **Bounty system** — optional objectives per run ("reach depth 75 with cargo ≤ 10" or "defeat 3 enemies without cooling"). Rewards bonus gold or fragments. Gives each run a mini-goal beyond "go deeper."
+- **Run streak bonus** — consecutive successful surfaces (drone survived) grant a stacking gold multiplier. A destroyed drone resets it. Encourages cautious play and return-policy tuning.
+
+## Technical
+
+- **requestAnimationFrame for log replay** — the current `setTimeout(appendLine, 80 + Math.random() * 120)` can drift. `rAF` with a delta accumulator would be smoother and more accurate.
+- **Part-def validation on load** — the `migrate()` function already prunes missing part IDs; could also validate that grid cells match `placed` entries and repair inconsistencies.
+- **Touch improvements** — the hold-to-rotate is clever but the 450ms delay can feel slow. A dedicated rotate button on the drag ghost would be more discoverable.
+- **Accessibility** — screen-reader labels on drag targets, focus outlines, aria-live regions for log updates.
+- **Modular part data** — parts.js could be split into per-type files or a single data block that's easier to contribute to.
+- **Offline / PWA support** — minimal service worker to cache the assets so it works without a server at all (not just via `file://`).
+- **Undo for grid placement** — a brief undo window after placing a part on the grid (before the workshop re-renders) to avoid misclicks.
+- **Save slot support** — allow multiple save files so you can experiment with different builds without losing your main progress.
+
+## Polish
+
+- **CRT scanline toggle** — the overlay is hardcoded; a settings toggle would let players disable the retro effect.
+- **Better mobile layout** — the workshop sidebars collapse vertically but the grid becomes very small on narrow screens. A tabbed mobile layout would help.
+- **Sound effect variety** — tick, loot, overheat, destroyed, milestone, launch, surface. Could add distinct sounds for enemies, fragment craft, shop purchase.
+- **Title screen animation** — animated drill-bit or strata crawl behind the title to set the mood.
+- **Surface sequence animation** — when the drone surfaces, a brief animated sequence of it rising through the strata before the results show.
+- **Results soundscape** — different audio sting for milestone achievements vs. normal surface vs. destruction. Small but satisfying.
