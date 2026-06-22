@@ -453,15 +453,13 @@ DrillDown.UI = (() => {
     left.innerHTML = '<h3>Parts</h3><div class="left-scroll"><div class="inventory-grid"></div></div>';
     const leftScroll = left.querySelector('.left-scroll');
     const invGrid = left.querySelector('.inventory-grid');
+    // Group duplicates into a single card; multiples show as a stacked "pile" (no number).
     const invCounts = {};
     gs.inventory.forEach(id => { invCounts[id] = (invCounts[id] || 0) + 1; });
     for (const [id, count] of Object.entries(invCounts)) {
       const el = createPartElement(id);
       if (el) {
-        const countEl = document.createElement('div');
-        countEl.className = 'part-count';
-        countEl.textContent = 'x' + count;
-        el.appendChild(countEl);
+        if (count > 1) el.classList.add('stacked');
         invGrid.appendChild(el);
       }
     }

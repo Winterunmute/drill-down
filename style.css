@@ -243,7 +243,18 @@ body::after {
 .part-card-cost { font-size: 11px; color: var(--amber); position: relative; }
 .part-cant-afford { opacity: 0.45; border-color: var(--phosphor-faint) !important; cursor: not-allowed; }
 .part-cant-afford:hover { transform: none; box-shadow: none; }
-.part-count { position: absolute; top: 2px; right: 4px; font-size: 10px; color: var(--phosphor); background: #000000cc; padding: 0 4px; border: 1px solid var(--phosphor-faint); }
+/* Duplicates render as one card with a stacked-pile look (offset layers peeking behind) */
+.part-card.stacked::before,
+.part-card.stacked::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--bg-deep);
+  border: 1px solid var(--phosphor-faint);
+  z-index: -1;
+}
+.part-card.stacked::before { transform: translate(3px, 3px); }
+.part-card.stacked::after  { transform: translate(6px, 6px); }
 
 /* Recycle bin — drop target */
 #recycle-bin {
