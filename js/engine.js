@@ -548,19 +548,52 @@ DrillDown.Engine = (() => {
     return state.inventory.filter(id => id === partId).length >= 2;
   }
 
-  // Consume 2 copies + gold from inventory and add one Mk II. Returns { ok, upgradedId, cost }.
-  function upgradePart(state, partId) {
+  // Plan a cascading merge starting at `partId`: greedily combine pairs tier by tier,
+  // carrying produced parts up into the next tier (and into any copies already held
+  // there), as far as the player's copies and gold allow. Pure — mutates nothing.
+  // Returns { steps:[{id,cost}], resultId, merges, totalCost, affordable }.
+  function planUpgrade(state, partId) {
     const def = P[partId];
-    if (!def || !def.upgradeTo) return { ok: false };
-    const cost = upgradeCost(partId);
-    if (state.inventory.filter(id => id === partId).length < 2 || state.gold < cost) return { ok: false };
-    let removed = 0;
-    for (let i = state.inventory.length - 1; i >= 0 && removed < 2; i--) {
-      if (state.inventory[i] === partId) { state.inventory.splice(i, 1); removed++; }
+    if (!def || !def.upgradeTo) return null;
+    // Tally current copies for the family from partId upward (higher tiers feed carries).
+    const counts = {};
+    for (let id = partId; id; id = P[id] && P[id].upgradeTo) {
+      counts[id] = state.inventory.filter(x => x === id).length;
     }
-    state.gold -= cost;
-    state.inventory.push(def.upgradeTo);
-    return { ok: true, upgradedId: def.upgradeTo, cost };
+    let gold = state.gold, totalCost = 0;
+    const steps = [];
+    for (let cur = partId; P[cur] && P[cur].upgradeTo; cur = P[cur].upgradeTo) {
+      const cost = upgradeCost(cur);
+      while (counts[cur] >= 2 && gold >= cost) {
+        counts[cur] -= 2;
+        const up = P[cur].upgradeTo;
+        counts[up] = (counts[up] || 0) + 1;
+        gold -= cost; totalCost += cost;
+        steps.push({ id: cur, cost });
+      }
+    }
+    if (!steps.length) {
+      return { steps, resultId: def.upgradeTo, merges: 0, totalCost: upgradeCost(partId), affordable: false };
+    }
+    const resultId = P[steps[steps.length - 1].id].upgradeTo;
+    return { steps, resultId, merges: steps.length, totalCost, affordable: true };
+  }
+
+  // Execute the cascading merge (see planUpgrade). Steps are applied low → high, so each
+  // higher-tier combine finds the parts the earlier steps produced. Returns
+  // { ok, upgradedId, merges, cost }.
+  function upgradePart(state, partId) {
+    const plan = planUpgrade(state, partId);
+    if (!plan || !plan.merges) return { ok: false };
+    for (const step of plan.steps) {
+      let removed = 0;
+      for (let i = state.inventory.length - 1; i >= 0 && removed < 2; i--) {
+        if (state.inventory[i] === step.id) { state.inventory.splice(i, 1); removed++; }
+      }
+      state.gold -= step.cost;
+      state.inventory.push(P[step.id].upgradeTo);
+    }
+    return { ok: true, upgradedId: plan.resultId, merges: plan.merges, cost: plan.totalCost };
   }
 
   // -- Shop --
@@ -698,7 +731,7 @@ DrillDown.Engine = (() => {
     computeStats, rockHardness, getEvent, simulateRun,
     generateShop, shopCost, shopPlan,
     addFragment, recyclePart, RECYCLE_GOLD, RECYCLE_PROGRESS,
-    upgradeCost, canUpgrade, upgradePart,
+    upgradeCost, canUpgrade, upgradePart, planUpgrade,
     zoneFor, MILESTONES, gridSynergies,
     save, load, migrate, SAVE_VERSION,
     COMMODITIES, commodityForDepth, cargoValue

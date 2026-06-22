@@ -505,22 +505,29 @@ DrillDown.UI = (() => {
         el.appendChild(badge);
       }
       if (count >= 2 && P[id].upgradeTo) {
-        const upDef = P[P[id].upgradeTo];
-        const cost = Eng.upgradeCost(id);
-        const afford = gs.gold >= cost;
+        // Cascade preview: the result tier + total gold for merging this whole stack up.
+        const plan = Eng.planUpgrade(gs, id);
+        const resultDef = P[(plan && plan.affordable) ? plan.resultId : P[id].upgradeTo];
+        const cost = (plan && plan.affordable) ? plan.totalCost : Eng.upgradeCost(id);
+        const afford = !!(plan && plan.affordable);
         const btn = document.createElement('button');
         btn.className = 'upgrade-btn' + (afford ? '' : ' disabled');
-        btn.innerHTML = `⬆ ${upDef.tier || 'Upgrade'} <span class="up-cost">${cost}g</span>`;
-        btn.title = `Combine 2× ${P[id].name} + ${cost}g → ${upDef.name}`;
+        btn.innerHTML = `⬆ ${resultDef.tier || 'Upgrade'} <span class="up-cost">${cost}g</span>`;
+        btn.title = afford && plan.merges > 1
+          ? `Merge your ${P[id].name} stack up into ${resultDef.name} — ${plan.merges} combines, ${cost}g`
+          : `Combine 2× ${P[id].name} + ${cost}g → ${resultDef.name}`;
         btn.onclick = (e) => {
           e.stopPropagation();
           const res = Eng.upgradePart(gs, id);
           if (res.ok) {
             A?.loot?.();
-            toast(`⬆ Upgraded to <b>${P[res.upgradedId].name}</b> · <span class="gold">-${res.cost}g</span>`, 'rare');
+            const msg = res.merges > 1
+              ? `⬆ Merged into <b>${P[res.upgradedId].name}</b> · ${res.merges} combines · <span class="gold">-${res.cost}g</span>`
+              : `⬆ Upgraded to <b>${P[res.upgradedId].name}</b> · <span class="gold">-${res.cost}g</span>`;
+            toast(msg, 'rare');
             DrillDown.Game.updateWorkshop();
           } else {
-            toast(`Need 2× ${P[id].name} and ${cost}g to upgrade.`, 'warn');
+            toast(`Need 2× ${P[id].name} and ${Eng.upgradeCost(id)}g to upgrade.`, 'warn');
           }
         };
         el.appendChild(btn);
