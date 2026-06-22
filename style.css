@@ -799,8 +799,24 @@ body::after {
 
 /* Responsive */
 @media (max-width: 800px) {
-  #screen-workshop { flex-direction: column; }
-  #workshop-left, #workshop-right { width: 100%; min-width: unset; max-height: 160px; }
-  #workshop-center { flex: 0; min-height: 400px; }
+  /* Stack the three panels and let the whole workshop scroll as one column,
+     instead of clipping each panel to a fixed height (which previously crushed
+     the inventory into a near-invisible sliver behind the recycle bin). */
+  #screen-workshop {
+    flex-direction: column;
+    height: 100vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 10px;
+  }
+  #workshop-left, #workshop-right {
+    width: 100%;
+    min-width: unset;
+    max-height: none;       /* size to content — show all parts */
+  }
+  #workshop-left { overflow: visible; }
+  .left-scroll { flex: 0 0 auto; overflow: visible; min-height: 0; }
+  /* Rig first so it's the first thing you see; parts + stats scroll below it. */
+  #workshop-center { order: -1; flex: 0 0 auto; min-height: 0; justify-content: flex-start; padding: 4px 0; }
   .title-logo { font-size: 44px; }
 }
