@@ -283,19 +283,23 @@ DrillDown.UI = (() => {
     if (!dragState || !pt) return;
     const gridEl = document.getElementById('grid-container');
     document.querySelectorAll('.grid-cell').forEach(el => el.classList.remove('grid-hover-ok', 'grid-hover-bad'));
-    if (gridEl) {
+    // Only preview placement while actually over the grid (not the inventory / recycle bin).
+    if (gridEl && pointInEl(pt, gridEl)) {
       const rect = gridEl.getBoundingClientRect();
+      const cols = parseInt(gridEl.dataset.cols);
+      const rows = parseInt(gridEl.dataset.rows);
       const col = Math.floor((pt.clientX - rect.left) / (CELL + GAP));
       const row = Math.floor((pt.clientY - rect.top) / (CELL + GAP));
       const def = dragState.partDef;
       const shape = dragState.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
-      const valid = row >= 0 && col >= 0 && Eng.canPlace(DrillDown.Game.state.grid, dragState.partId, row, col, dragState.rotated);
-      if (valid) {
-        for (const [dr, dc] of shape) {
-          const idx = (row + dr) * parseInt(gridEl.dataset.cols) + (col + dc);
-          const cell = gridEl.querySelector(`.grid-cell[data-index="${idx}"]`);
-          if (cell) cell.classList.add('grid-hover-ok');
-        }
+      // Green when it would drop here, red otherwise (overlap or off-grid).
+      const valid = Eng.canPlace(DrillDown.Game.state.grid, dragState.partId, row, col, dragState.rotated);
+      const cls = valid ? 'grid-hover-ok' : 'grid-hover-bad';
+      for (const [dr, dc] of shape) {
+        const rr = row + dr, cc = col + dc;
+        if (rr < 0 || cc < 0 || rr >= rows || cc >= cols) continue; // skip overhang so it can't wrap to another row
+        const cell = gridEl.querySelector(`.grid-cell[data-index="${rr * cols + cc}"]`);
+        if (cell) cell.classList.add(cls);
       }
     }
     const recycleBin = document.getElementById('recycle-bin');
