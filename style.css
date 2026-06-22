@@ -176,6 +176,7 @@ body::after {
   font-size: 13px;
   letter-spacing: 1px;
 }
+.grid-header-actions { display: flex; gap: 6px; align-items: center; }
 
 /* Grid */
 #grid-container {
@@ -256,6 +257,88 @@ body::after {
 .part-card.stacked::before { transform: translate(3px, 3px); }
 .part-card.stacked::after  { transform: translate(6px, 6px); }
 
+/* Mk II upgrade button — sits on the corner of a stacked inventory card */
+.upgrade-btn {
+  position: absolute;
+  bottom: -8px;
+  right: -8px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 5px;
+  font-family: inherit;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--bg-deep);
+  background: var(--phosphor);
+  border: 1px solid var(--phosphor);
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(0,0,0,0.6);
+  transition: transform 0.1s, background 0.15s;
+}
+.upgrade-btn:hover { transform: scale(1.08); background: #fff; }
+.upgrade-btn .up-cost { color: var(--amber); font-weight: bold; }
+.upgrade-btn.disabled { opacity: 0.55; filter: grayscale(0.5); }
+.upgrade-btn.disabled .up-cost { color: #b06a2a; }
+
+/* ×N count badge on a stacked card */
+.count-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  z-index: 12;
+  min-width: 16px;
+  padding: 1px 4px;
+  font-size: 10px;
+  font-weight: bold;
+  text-align: center;
+  color: var(--bg-deep);
+  background: var(--amber);
+  border: 1px solid var(--bg-deep);
+  border-radius: 8px;
+  box-shadow: 0 0 5px rgba(0,0,0,0.6);
+}
+
+/* Inventory type-section header (forces a full-width break in the flex grid) */
+.inv-type-head {
+  flex-basis: 100%;
+  width: 100%;
+  margin: 6px 0 1px;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--phosphor-dim);
+  border-bottom: 1px solid var(--phosphor-faint);
+  padding-bottom: 2px;
+}
+.inv-type-head:first-child { margin-top: 0; }
+
+/* Themed confirm dialog */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.72);
+}
+.confirm-box {
+  background: var(--bg-panel);
+  border: 1px solid var(--phosphor-faint);
+  box-shadow: var(--glow);
+  padding: 22px 24px;
+  max-width: 360px;
+  text-align: center;
+}
+.confirm-title { color: var(--amber); font-size: 17px; letter-spacing: 1px; margin-bottom: 10px; }
+.confirm-body { color: var(--phosphor-dim); font-size: 13px; line-height: 1.5; margin-bottom: 18px; }
+.confirm-actions { display: flex; gap: 10px; justify-content: center; }
+.btn-danger { background: #5a1414; border-color: #ff6b6b; color: #ff9a9a; }
+.btn-danger:hover { background: #7a1c1c; color: #fff; }
+
 /* Recycle bin — drop target */
 #recycle-bin {
   margin-top: 12px;
@@ -320,6 +403,7 @@ body::after {
 }
 .toast-line.toast-rare { border-color: var(--rare, #74b9ff); color: #74b9ff; }
 .toast-line.toast-loot { border-color: var(--phosphor); }
+.toast-line.toast-warn { border-color: var(--amber); color: var(--amber); }
 .toast-line .gold { color: var(--amber); }
 .toast-line.toast-out { opacity: 0; transform: translateY(-8px); }
 

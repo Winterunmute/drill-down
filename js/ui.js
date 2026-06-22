@@ -34,6 +34,28 @@ DrillDown.UI = (() => {
     setTimeout(() => line.remove(), 3000);
   }
 
+  // Themed confirm dialog (replaces native confirm). opts: { title, body, confirmLabel,
+  // cancelLabel, danger, onConfirm }. Resolves by calling onConfirm; dismisses otherwise.
+  function confirmModal(opts) {
+    opts = opts || {};
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay active';
+    overlay.innerHTML = `
+      <div class="confirm-box">
+        <div class="confirm-title">${opts.title || 'Are you sure?'}</div>
+        ${opts.body ? `<div class="confirm-body">${opts.body}</div>` : ''}
+        <div class="confirm-actions">
+          <button class="btn btn-secondary" data-act="cancel">${opts.cancelLabel || 'Cancel'}</button>
+          <button class="btn ${opts.danger ? 'btn-danger' : 'btn-primary'}" data-act="ok">${opts.confirmLabel || 'Confirm'}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-act="cancel"]').onclick = close;
+    overlay.querySelector('[data-act="ok"]').onclick = () => { close(); opts.onConfirm && opts.onConfirm(); };
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+  }
+
   // Normalize mouse + touch events to a single {clientX, clientY} point.
   function evtPoint(e) {
     if (e.touches && e.touches.length) return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
@@ -114,7 +136,19 @@ DrillDown.UI = (() => {
         <div class="title-hint">Drag parts onto your rig. Launch to drill into the depths.<br>Deeper = better loot. Don't overheat.</div>
       </div>
     `;
-    document.getElementById('btn-new-run').onclick = () => DrillDown.Game.newRun();
+    document.getElementById('btn-new-run').onclick = () => {
+      if (Eng.load()) {
+        confirmModal({
+          title: '⚠ Start a New Run?',
+          body: 'This erases your current saved progress — parts, gold, grid, and depth records. This cannot be undone.',
+          confirmLabel: 'Erase & Start',
+          danger: true,
+          onConfirm: () => DrillDown.Game.newRun()
+        });
+      } else {
+        DrillDown.Game.newRun();
+      }
+    };
     const contBtn = document.getElementById('btn-continue');
     if (contBtn) contBtn.onclick = () => DrillDown.Game.continueRun();
   }
@@ -126,7 +160,8 @@ DrillDown.UI = (() => {
     el.className = 'part-card';
     el.dataset.partId = partId;
 
-    const canAfford = opts.fromShop ? (DrillDown.Game.state.gold >= def.cost) : true;
+    const price = opts.fromShop ? Eng.shopCost(partId) : def.cost;
+    const canAfford = opts.fromShop ? (DrillDown.Game.state.gold >= price) : true;
     if (!canAfford) el.classList.add('part-cant-afford');
     el.style.borderColor = canAfford ? (DrillDown.RARITY_COLORS[def.rarity] || '#fff') : '#444';
 
@@ -138,7 +173,7 @@ DrillDown.UI = (() => {
       <div class="part-card-bg" style="background:${def.color}22; border-color:${def.color}"></div>
       <div class="part-card-name">${def.name}</div>
       <div class="part-card-rarity ${def.rarity}">${def.rarity}</div>
-      <div class="part-card-cost">${opts.showCost ? def.cost + 'g' : ''}</div>
+      <div class="part-card-cost">${opts.showCost ? price + 'g' : ''}</div>
     `;
 
     // Hover tooltip + track the hovered card so R can pre-rotate it before pickup
@@ -149,12 +184,12 @@ DrillDown.UI = (() => {
     // Pointer down (mouse or touch): drag from inventory, or shop — preserving any pre-rotation
     const onDown = (e) => {
       if (e.type === 'mousedown' && e.button !== 0) return;
-      if (e.target.closest('.sell-btn')) return;
+      if (e.target.closest('.sell-btn') || e.target.closest('.upgrade-btn')) return;
       if (e.type === 'touchstart' && e.cancelable) e.preventDefault();
       const rotated = el.dataset.rotated === '1';
       if (opts.fromShop) {
         const gs = DrillDown.Game.state;
-        if (gs.gold < def.cost) return;
+        if (gs.gold < Eng.shopCost(partId)) return;
         document.getElementById('shop-overlay')?.classList.remove('active');
         startDrag(partId, rotated, null, e, true);
         return;
@@ -325,8 +360,9 @@ DrillDown.UI = (() => {
     const doPurchase = () => {
       if (!dragState.fromShop || purchased) return;
       const def = P[dragState.partId];
-      if (!def || gs.gold < def.cost) return;
-      gs.gold -= def.cost;
+      const price = Eng.shopCost(dragState.partId);
+      if (!def || gs.gold < price) return;
+      gs.gold -= price;
       const sidx = gs.shop.indexOf(dragState.partId);
       if (sidx >= 0) gs.shop.splice(sidx, 1);
       purchased = true;
@@ -346,7 +382,7 @@ DrillDown.UI = (() => {
               placed = true;
             } else {
               // refund
-              gs.gold += P[dragState.partId].cost;
+              gs.gold += Eng.shopCost(dragState.partId);
               gs.shop.push(dragState.partId);
               purchased = false;
             }
@@ -453,14 +489,77 @@ DrillDown.UI = (() => {
     left.innerHTML = '<h3>Parts</h3><div class="left-scroll"><div class="inventory-grid"></div></div>';
     const leftScroll = left.querySelector('.left-scroll');
     const invGrid = left.querySelector('.inventory-grid');
-    // Group duplicates into a single card; multiples show as a stacked "pile" (no number).
     const invCounts = {};
     gs.inventory.forEach(id => { invCounts[id] = (invCounts[id] || 0) + 1; });
-    for (const [id, count] of Object.entries(invCounts)) {
+
+    // Build one inventory card: stacked-pile look + ×N badge for duplicates, plus the
+    // Mk II/III/IV combine button on any stack of 2+ whose part has an upgrade path.
+    const buildInvCard = (id, count) => {
       const el = createPartElement(id);
-      if (el) {
-        if (count > 1) el.classList.add('stacked');
-        invGrid.appendChild(el);
+      if (!el) return null;
+      if (count > 1) {
+        el.classList.add('stacked');
+        const badge = document.createElement('div');
+        badge.className = 'count-badge';
+        badge.textContent = '×' + count;
+        el.appendChild(badge);
+      }
+      if (count >= 2 && P[id].upgradeTo) {
+        const upDef = P[P[id].upgradeTo];
+        const cost = Eng.upgradeCost(id);
+        const afford = gs.gold >= cost;
+        const btn = document.createElement('button');
+        btn.className = 'upgrade-btn' + (afford ? '' : ' disabled');
+        btn.innerHTML = `⬆ ${upDef.tier || 'Upgrade'} <span class="up-cost">${cost}g</span>`;
+        btn.title = `Combine 2× ${P[id].name} + ${cost}g → ${upDef.name}`;
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const res = Eng.upgradePart(gs, id);
+          if (res.ok) {
+            A?.loot?.();
+            toast(`⬆ Upgraded to <b>${P[res.upgradedId].name}</b> · <span class="gold">-${res.cost}g</span>`, 'rare');
+            DrillDown.Game.updateWorkshop();
+          } else {
+            toast(`Need 2× ${P[id].name} and ${cost}g to upgrade.`, 'warn');
+          }
+        };
+        el.appendChild(btn);
+      }
+      return el;
+    };
+
+    // Group the inventory into labeled type sections. Within a section, parts are ordered
+    // by family (a base part and its Mk tiers stay together), families sorted by base
+    // rarity then name, and tiers listed base → Mk II → Mk III → Mk IV.
+    const RARITY_ORDER = { common: 0, uncommon: 1, rare: 2, unique: 3 };
+    const familyRoot = (id) => { let cur = id; while (P[cur] && P[cur].upgradeOf) cur = P[cur].upgradeOf; return cur; };
+    const tierRank = (id) => { let n = 0, cur = id; while (P[cur] && P[cur].upgradeOf) { n++; cur = P[cur].upgradeOf; } return n; };
+    const TYPE_SECTIONS = [
+      { type: 'drill',   label: '⚙ Drills' },
+      { type: 'cooling', label: '❄ Cooling' },
+      { type: 'defense', label: '🛡 Defense' },
+      { type: 'utility', label: '🔧 Utility' },
+      { type: 'core',    label: '🔆 Cores' }
+    ];
+    const distinctIds = Object.keys(invCounts);
+    for (const sec of TYPE_SECTIONS) {
+      const ids = distinctIds.filter(id => P[id] && P[id].type === sec.type);
+      if (!ids.length) continue;
+      ids.sort((a, b) => {
+        const ra = familyRoot(a), rb = familyRoot(b);
+        if (ra !== rb) {
+          const d = (RARITY_ORDER[P[ra].rarity] || 0) - (RARITY_ORDER[P[rb].rarity] || 0);
+          return d !== 0 ? d : P[ra].name.localeCompare(P[rb].name);
+        }
+        return tierRank(a) - tierRank(b);
+      });
+      const head = document.createElement('div');
+      head.className = 'inv-type-head';
+      head.textContent = sec.label;
+      invGrid.appendChild(head);
+      for (const id of ids) {
+        const el = buildInvCard(id, invCounts[id]);
+        if (el) invGrid.appendChild(el);
       }
     }
     if (gs.inventory.length === 0) {
@@ -483,10 +582,14 @@ DrillDown.UI = (() => {
     const expandCost = 100 + (grid.rows - 3) * 50 + (grid.cols - 4) * 50;
     const maxSize = grid.rows >= 8 && grid.cols >= 8;
 
+    const hasPlaced = Object.keys(grid.placed).length > 0;
     center.innerHTML = `
       <div class="grid-header">
         <span>Rig — ${grid.rows}x${grid.cols}</span>
-        ${maxSize ? '' : `<button class="btn btn-small btn-secondary" id="btn-expand">+ Expand (${expandCost}g)</button>`}
+        <span class="grid-header-actions">
+          ${hasPlaced ? `<button class="btn btn-small btn-secondary" id="btn-clear-grid" title="Return all placed parts to your inventory">↩ Clear Grid</button>` : ''}
+          ${maxSize ? '' : `<button class="btn btn-small btn-secondary" id="btn-expand">+ Expand (${expandCost}g)</button>`}
+        </span>
       </div>
       <div id="grid-container" style="width:${totalW}px;height:${totalH}px;position:relative;" data-rows="${grid.rows}" data-cols="${grid.cols}">
       </div>
@@ -594,6 +697,19 @@ DrillDown.UI = (() => {
       };
     }
 
+    const clearBtn = document.getElementById('btn-clear-grid');
+    if (clearBtn) {
+      clearBtn.onclick = () => {
+        let n = 0;
+        for (const pid of Object.keys(grid.placed)) {
+          const p = Eng.removePart(grid, pid);
+          if (p) { gs.inventory.push(p.id); n++; }
+        }
+        if (n) { A?.tick?.(); toast(`↩ Cleared <b>${n}</b> part${n > 1 ? 's' : ''} back to inventory`, 'loot'); }
+        DrillDown.Game.updateWorkshop();
+      };
+    }
+
     document.getElementById('btn-launch').onclick = () => DrillDown.Game.startRun();
 
     const stats = Eng.computeStats(grid);
@@ -650,7 +766,9 @@ DrillDown.UI = (() => {
       <button class="btn btn-secondary shop-btn" id="btn-open-shop">🏪 Shop</button>
       <button class="btn btn-secondary shop-btn" id="btn-help-open" style="margin-top:4px;font-size:12px;">📖 How to Play</button>
       <button class="btn btn-secondary shop-btn" id="btn-mute" style="margin-top:4px;font-size:12px;">${A?.isMuted() ? '🔇 Sound: Off' : '🔊 Sound: On'}</button>
+      <button class="btn btn-secondary shop-btn" id="btn-menu" style="margin-top:4px;font-size:12px;">⌂ Title Menu</button>
     `;
+    document.getElementById('btn-menu').onclick = () => { renderTitle(); showScreen('title'); };
     document.getElementById('btn-open-shop').onclick = () => renderShop();
     document.getElementById('btn-help-open').onclick = () => renderHelp();
     document.getElementById('btn-help').onclick = () => renderHelp();
@@ -671,8 +789,13 @@ DrillDown.UI = (() => {
     const overlay = document.getElementById('shop-overlay');
     overlay.classList.add('active');
     const cont = overlay.querySelector('.shop-content');
+    const plan = Eng.shopPlan(gs.bestDepth);
+    const stockNote = plan.unique
+      ? `Stock tier: <strong style="color:#74b9ff">${plan.name}</strong> — premium uniques in stock`
+      : `Stock tier: <strong style="color:#74b9ff">${plan.name}</strong> — drill deeper for rarer stock`;
     cont.innerHTML = `<h2>🏪 Parts Shop</h2>
-      <div style="margin-bottom:12px;color:#888;font-size:13px;">💰 Gold: <strong style="color:#f5a623">${gs.gold}g</strong> — Drag a part to buy it</div>
+      <div style="margin-bottom:6px;color:#888;font-size:13px;">💰 Gold: <strong style="color:#f5a623">${gs.gold}g</strong> — Drag a part to buy it</div>
+      <div style="margin-bottom:12px;color:#666;font-size:12px;">${stockNote}</div>
       <div class="shop-items"></div>
       <div style="margin-top:14px;">
         <button class="btn btn-secondary" id="btn-shop-close">Close</button>
@@ -775,7 +898,8 @@ DrillDown.UI = (() => {
       gs.lastDepth = runResult.maxDepth;
       const survived = runResult.surfaced;
       // The haul only banks if the drone makes it back. Destroyed = everything carried is lost.
-      const oreGold = survived ? Math.floor(runResult.ore * 2) : 0;
+      const cargoArr = runResult.cargo || [];
+      const oreGold = survived ? Eng.cargoValue(cargoArr) : 0;
       const bonusGold = survived ? runResult.gold : 0;
       gs.gold += bonusGold + oreGold;
       if (!gs.fragments) gs.fragments = {};
@@ -808,6 +932,18 @@ DrillDown.UI = (() => {
       const totalGold = bonusGold + oreGold + milestoneGold;
       const newBest = runResult.maxDepth >= (gs.bestDepth || 0);
       const zone = Eng.zoneFor(runResult.maxDepth);
+      const cargoArr = runResult.cargo || [];
+      // Build cargo breakdown from commodities
+      const comMap = {};
+      Eng.COMMODITIES.forEach(c => comMap[c.id] = c);
+      const cargoCounts = {};
+      cargoArr.forEach(id => { cargoCounts[id] = (cargoCounts[id] || 0) + 1; });
+      const cargoHtml = Object.keys(cargoCounts).length
+        ? Object.entries(cargoCounts).map(([id, n]) => {
+            const c = comMap[id];
+            return c ? `${c.emoji} ${n}× ${c.name}` : `${n}× ${id}`;
+          }).join(' · ')
+        : 'none';
       const statusBar = document.getElementById('drill-status');
       if (statusBar) {
         statusBar.classList.add('run-complete-bar');
@@ -821,7 +957,8 @@ DrillDown.UI = (() => {
             <span class="rc-chip"><label>Zone</label><b>${zone.name}</b></span>
             <span class="rc-chip"><label>Best Ever</label><b>${gs.bestDepth}</b></span>
             <span class="rc-chip"><label>Status</label><b class="${survived ? 'text-ok' : 'text-fail'}">${survived ? 'Surfaced' : 'Destroyed'}</b></span>
-            <span class="rc-chip"><label>Ore Mined</label><b class="${survived ? '' : 'text-fail'}">${runResult.ore}${survived ? ` (${oreGold}g)` : ' (lost)'}</b></span>
+            <span class="rc-chip"><label>Cargo (${cargoArr.length} slots)</label><b class="${survived ? '' : 'text-fail'}" style="font-size:14px">${survived ? cargoHtml : 'lost'}</b></span>
+            <span class="rc-chip"><label>Haul Value</label><b class="${survived ? 'gold' : 'text-fail'}">${survived ? `+${oreGold}g` : 'lost'}</b></span>
             <span class="rc-chip"><label>Fragments</label><b class="${survived ? '' : 'text-fail'}">${runResult.foundParts.length}${survived ? '' : ' (lost)'}</b></span>
             <span class="rc-chip"><label>Gold Earned</label><b class="gold">+${totalGold}g</b></span>
           </div>
@@ -836,7 +973,7 @@ DrillDown.UI = (() => {
           <button class="btn btn-secondary" id="btn-back-workshop">⬆ Workshop</button>`;
         document.getElementById('btn-relaunch').onclick = () => DrillDown.Game.startRun();
         document.getElementById('btn-back-workshop').onclick = () => {
-          gs.shop = Eng.generateShop(gs.runNumber);
+          gs.shop = Eng.generateShop(gs.runNumber, gs.bestDepth);
           gs.runNumber++;
           DrillDown.Game.updateWorkshop();
         };
@@ -874,17 +1011,17 @@ DrillDown.UI = (() => {
       const entry = result.log[at];
       if (entry) {
         const pct = result.log.length > 0 ? (at + 1) / result.log.length : 1;
+        const truncatedCargo = entry.cargoItems || [];
         const truncated = {
           maxDepth: entry.depth,
-          ore: entry.cumOre || Math.floor(result.ore * pct),
           gold: entry.cumGold || Math.floor(result.gold * pct),
           foundParts: result.foundParts.slice(0, Math.max(1, Math.floor(result.foundParts.length * pct))),
           hp: entry.hp,
-          cargo: entry.cargo,
+          cargo: truncatedCargo,
           log: result.log.slice(0, idx),
           surfaced: true
         };
-        truncated.log.push({ depth: entry.depth, text: '⬆ Manual surface ordered. Returning to base.', hp: entry.hp, heat: 0, cargo: entry.cargo, cumOre: truncated.ore, cumGold: truncated.gold });
+        truncated.log.push({ depth: entry.depth, text: '⬆ Manual surface ordered. Returning to base.', hp: entry.hp, heat: 0, cargo: truncatedCargo.length, cargoItems: truncatedCargo, cumGold: truncated.gold });
         const lineEl = document.createElement('div');
         lineEl.className = 'log-entry';
         lineEl.textContent = truncated.log[truncated.log.length - 1].text;

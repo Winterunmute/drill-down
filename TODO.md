@@ -6,14 +6,14 @@ Ideas gathered from reading the full codebase. No priority implied by order — 
 
 Ideas you specifically asked to add:
 
-- **Part upgrade system** — spend gold (or a new resource like "circuits" / "plasma") to permanently boost a part's stats. Several approaches:
+- ✅ **Part upgrade system (Mk II/III/IV tiers — DONE)** — combining two copies of a tier + gold forges the next tier, chaining base → Mk II → Mk III → Mk IV. Auto-generated for every non-unique part in `parts.js` (`generateUpgrades`); engine API in `Engine.upgradePart`; `⬆ Mk II/III/IV` button on stacked inventory cards. Other approaches below remain open ideas:
   - **Stat infusion** — pay escalating gold to add +1 to a chosen stat on a specific part instance. Tracked in state as `upgrades: { partId: { drillPower: 2, cooling: 1 } }`, applied in `computeStats`.
   - **Mk II / tier upgrade** — combine 2 copies of the same base part + gold to produce a strictly better version (e.g. Basic Drill → Reinforced Drill). Could use a new `upgradeOf` field in `parts.js` pointing to the next tier, or auto-scale stats by a multiplier.
   - **Gem sockets** — rare depth-only drops that slot into a part and add a secondary stat (e.g. "Heat Sink Gem: +2 cooling, +1 cargo"). Stored on the grid's `placed` metadata.
   - Each approach adds a meaningful gold sink between runs and makes common parts stay relevant late-game instead of being recycled the moment you find a rare.
 
-- **Shop scales with progress** — once you've reached deeper zones, the shop's common/uncommon slots feel worthless since only unique (craft-only) parts move the needle. Ideas:
-  - Shop slots scale with best depth: deeper = higher chance to spawn rare parts, eventually 1–2 unique slots at extreme depths.
+- ✅ **Shop scales with progress (DONE)** — `Engine.shopPlan(bestDepth)` now shifts the rarity mix from commons toward rares as your best depth grows, and opens a premium unique slot at depth ≥ 300 (`SHOP_UNIQUE_PRICE`). The shop header shows the current stock tier. Remaining ideas below are still open:
+  - ~~Shop slots scale with best depth: deeper = higher chance to spawn rare parts, eventually 1–2 unique slots at extreme depths.~~ (done)
   - Introduce "enhanced" shop variants — a part already in your inventory can appear at a discount or with a pre-applied upgrade (see part upgrade system above).
   - Rare/unique parts in the shop cost a premium but save you the fragment grind.
   - A secondary "black market" tab that unlocks after depth 100, selling rare parts for ore (not gold), or trading excess fragments for gold.
@@ -116,3 +116,87 @@ Ideas you specifically asked to add:
 - **Title screen animation** — animated drill-bit or strata crawl behind the title to set the mood.
 - **Surface sequence animation** — when the drone surfaces, a brief animated sequence of it rising through the strata before the results show.
 - **Results soundscape** — different audio sting for milestone achievements vs. normal surface vs. destruction. Small but satisfying.
+
+---
+
+## 🧠 SYSTEM BALANCE + ENDGAME PRESSURE UPDATE
+
+We are addressing two core issues in the current progression system:
+
+1. **Power scaling caps too early**
+2. **Unique parts lose rarity impact too quickly**
+
+The goal is not to reduce player power, but to introduce **soft limits, trade-offs, and long-term build pressure** so that progression stays meaningful into late game.
+
+---
+
+### ⚙️ CORE SYSTEM CHANGE: SOFT POWER LIMITING
+
+Current issue:
+* Stats scale linearly or additively
+* Synergies stack too cleanly
+* Players reach "solved builds" too early
+
+#### 🔻 Option A — Diminishing Returns (Recommended baseline)
+
+All major stats (Drill, Cooling, Amp, etc.) should follow a curve instead of linear scaling:
+* Replace raw stacking with soft-cap formula:
+  * `effective = raw / (1 + raw / k)`
+  * or `sqrt(raw)` scaling for simpler implementation
+* Effect: early game feels strong, mid game spikes feel rewarding, late game stops trivial scaling
+
+#### 🔻 Option B — Global Instability / Efficiency Pressure
+
+Introduce a global constraint system:
+* Powerful parts generate "instability / heat load / strain"
+* Too much total power reduces efficiency of all systems
+* Builds must balance strength vs stability
+* Effect: prevents "max everything" builds, encourages hybrid design and trade-offs
+
+#### 🔻 Option C — Structural / Grid Efficiency Pressure
+
+Add indirect penalties for overloading builds:
+* Too many high-tier parts reduce synergy efficiency
+* Core or structural parts limit amplification
+* Certain placements introduce "efficiency loss zones"
+* Effect: grid design becomes a constraint puzzle, not just stacking optimization
+
+---
+
+### 💎 UNIQUE PART SYSTEM REWORK (RARITY + IMPACT FIX)
+
+Current issue:
+* Unique parts appear too frequently
+* They feel like guaranteed upgrades instead of rare discoveries
+
+#### 🔻 Option A — Discovery-Based Unlocking (Recommended)
+
+Unique parts do NOT enter normal loot pool immediately. Instead they are unlocked via bosses, fragments, or biome milestones. Only after discovery can they appear in shop or loot pool.
+* Effect: creates anticipation + progression gating, prevents early saturation of powerful items
+
+#### 🔻 Option B — Depth-Based Loot Dilution
+
+As depth increases, the loot pool expands faster than acquisition rate, making specific uniques statistically rarer over time.
+* Effect: maintains rarity pressure into late game
+
+#### 🔻 Option C — Unique Trade-off Design (VERY IMPORTANT)
+
+Unique parts should NOT always be optimal. Give them drawbacks, conditional activation, adjacency penalties, instability generation, or structural incompatibility.
+* Example: high power but reduces nearby synergy efficiency; extreme stats but increases instability load; strong effect only in specific depth ranges
+* Effect: uniques become **build-defining decisions, not auto-upgrades**
+
+---
+
+### 🎯 DESIGN GOAL SUMMARY
+
+These changes aim to ensure:
+* Power progression does NOT flatten mid/late game
+* Builds never become fully solved
+* Unique items stay exciting across entire run
+* Every strong decision introduces a new problem to manage
+
+### ⚡ IMPLEMENTATION PRIORITY
+
+1. Add diminishing returns OR global instability first
+2. Then adjust unique drop rarity (gating or dilution)
+3. Finally introduce unique trade-offs for build tension

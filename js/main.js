@@ -13,7 +13,7 @@ DrillDown.Game = (() => {
       recycleProgress: 0,
       returnPolicy: { cargoFull: true, hpPct: 0.25 },
       milestones: [],
-      shop: Eng.generateShop(1),
+      shop: Eng.generateShop(1, 0),
       runNumber: 1,
       lastDepth: 0,
       bestDepth: 0,
@@ -56,8 +56,11 @@ DrillDown.Game = (() => {
   }
 
   function init() {
-    UI.renderTitle();
     UI.initTooltip?.();
+    UI.renderTitle();
+    // Quick-start: if a save exists, jump straight into the workshop (title is still
+    // reachable via the workshop's "Title Menu" button).
+    if (Eng.load()) continueRun();
     // Audio contexts must start after a user gesture
     const resumeAudio = () => { DrillDown.Audio?.resume(); document.removeEventListener('pointerdown', resumeAudio); };
     document.addEventListener('pointerdown', resumeAudio);

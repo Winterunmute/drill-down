@@ -420,6 +420,62 @@ DrillDown.PARTS = {
   }
 };
 
+// -- Mk II/III/IV tier upgrades --
+// For every non-unique part, synthesize a chain of strictly-stronger "Mk" tiers the
+// player crafts by combining two copies of the previous tier plus gold (see
+// Engine.upgradePart). Generated here (rather than hand-authored) so every base part
+// gets a consistent ladder. Each tier carries an `upgradeOf` back-reference and the
+// previous tier gets an `upgradeTo` forward-reference, forming base → Mk II → Mk III →
+// Mk IV. Mk parts are combine-only: the shop, fragment caches and recycle pools all skip
+// anything with an `upgradeOf` field. Good stats scale ~×1.6 per tier; heat scales
+// slower (×1.3) so each tier is more heat-efficient; trade-off penalties stay fixed.
+(function generateUpgrades() {
+  const UP_MULT = 1.6;                 // good stats per tier
+  const HEAT_MULT = 1.3;               // heat grows slower than power → better ratio each tier
+  const NEXT_RARITY = { common: 'uncommon', uncommon: 'rare', rare: 'rare' };
+  const TIERS = [
+    { suffix: '_mk2', tier: 'Mk II' },
+    { suffix: '_mk3', tier: 'Mk III' },
+    { suffix: '_mk4', tier: 'Mk IV' }
+  ];
+  const round = (k, v) => k === 'speed' ? Math.round(v * 10) / 10 : Math.round(v);
+  // Object.keys snapshots the base parts, so tiers added below aren't re-iterated.
+  for (const baseId of Object.keys(DrillDown.PARTS)) {
+    const base = DrillDown.PARTS[baseId];
+    if (base.rarity === 'unique') continue;            // uniques are already the top tier
+    let prevId = baseId;
+    for (const t of TIERS) {
+      const prev = DrillDown.PARTS[prevId];
+      const stats = {};
+      for (const k in prev.stats) {
+        const v = prev.stats[k];
+        if (k === 'heatGen') stats[k] = Math.max(v, round(k, v * HEAT_MULT));
+        else if (v > 0) stats[k] = Math.max(round(k, v) + (k === 'speed' ? 0.1 : 1), round(k, v * UP_MULT));
+        else stats[k] = v;                             // keep trade-off penalties (e.g. -speed) as-is
+      }
+      const upId = baseId + t.suffix;
+      const up = {
+        id: upId,
+        name: base.name + ' ' + t.tier,
+        tier: t.tier,
+        type: base.type,
+        shape: base.shape.map(s => s.slice()),
+        stats,
+        rarity: NEXT_RARITY[prev.rarity],
+        cost: Math.round(prev.cost * 2.2),
+        color: base.color,
+        emoji: base.emoji,
+        upgradeOf: prevId,
+        desc: (base.desc ? base.desc + ' ' : '') + `${t.tier} tier — forged by combining two ${prev.name}.`
+      };
+      if (prev.amp) up.amp = Math.round((prev.amp + 0.15) * 100) / 100;   // cores amplify harder each tier
+      DrillDown.PARTS[upId] = up;
+      DrillDown.PARTS[prevId].upgradeTo = upId;
+      prevId = upId;
+    }
+  }
+})();
+
 DrillDown.RARITY_COLORS = {
   common: '#ffffff',
   uncommon: '#55efc4',

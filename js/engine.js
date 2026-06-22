@@ -169,6 +169,33 @@ DrillDown.Engine = (() => {
     return stats;
   }
 
+  // -- Commodities (slot-based cargo) --
+  // Each commodity has a base value (gold at surface), emoji, and minimum depth
+  // where it starts appearing. Deeper = better.
+  const COMMODITIES = [
+    { id: 'iron',       name: 'Iron Ore',    baseValue: 1,  emoji: '🪨', minDepth: 0   },
+    { id: 'gold',       name: 'Gold Nugget', baseValue: 3,  emoji: '✨', minDepth: 50  },
+    { id: 'diamond',    name: 'Diamond',     baseValue: 8,  emoji: '💎', minDepth: 150 },
+    { id: 'void_shard', name: 'Void Shard',  baseValue: 15, emoji: '🔮', minDepth: 300 },
+  ];
+
+  // Pick a random commodity weighted toward depth. Shallow depths produce mostly
+  // iron; deeper depths shift toward higher-value goods.
+  function commodityForDepth(depth) {
+    const available = COMMODITIES.filter(c => depth >= c.minDepth);
+    // Heavily weight the cheapest available, with a small chance of the best.
+    const idx = Math.floor(Math.random() * Math.max(1, Math.floor(available.length * 2.5)));
+    return available[Math.min(idx, available.length - 1)];
+  }
+
+  // Compute total gold value from an array of commodity IDs.
+  function cargoValue(cargo) {
+    if (!cargo || !cargo.length) return 0;
+    const map = {};
+    COMMODITIES.forEach(c => map[c.id] = c.baseValue);
+    return cargo.reduce((sum, id) => sum + (map[id] || 0), 0);
+  }
+
   // -- Events --
   function rockHardness(depth) {
     return 3 + depth * 0.8 + Math.sin(depth * 0.5) * 2;
@@ -182,17 +209,20 @@ DrillDown.Engine = (() => {
       return { type: 'rare_ore', text: `Void Crystal found! +${oreValue}g value`, gold: oreValue * 2 };
     }
     if (roll < 10 + depth * 0.1) {
-      const craftIds = Object.keys(P).filter(id => P[id].rarity === 'rare' || P[id].rarity === 'unique');
-      if (craftIds.length > 0) {
-        const chosen = craftIds[Math.floor(Math.random() * craftIds.length)];
+      // Caches mostly yield rare fragments; uniques are a deep-run prize whose odds ramp
+      // with depth (≈0 near the surface, capped at 18% in the deep core).
+      const uniqueChance = Math.min(0.18, depth / 1800);
+      const chosen = randomCraftable(uniqueChance);
+      if (chosen) {
         const needed = P[chosen].rarity === 'unique' ? 3 : 2;
         return { type: 'fragment', text: `Ancient cache! ${P[chosen].name} fragment (1/${needed})`, partId: chosen };
       }
     }
     if (roll < 15 + lootChance * 0.3) {
       // Deeper veins are richer — the payoff for risking the descent.
-      const ore = Math.floor(4 + depth * 0.35 + Math.random() * 4);
-      return { type: 'loot', text: `Ore vein! +${ore} ore`, ore };
+      const qty = Math.floor(1 + depth * 0.12 + Math.random() * 2);
+      const com = commodityForDepth(depth);
+      return { type: 'loot', text: `Ore vein! +${qty} ${com.name}`, items: Array(qty).fill(com.id), comId: com.id };
     }
     if (roll < 30 + depth * 0.2) {
       const enemy = depth < 25 ? 'Rock Worm' : depth < 75 ? 'Crystal Spider'
@@ -299,17 +329,36 @@ DrillDown.Engine = (() => {
     let depth = (maxDepth || 0) + 1;
     let hp = robotStats.hp;
     let heat = 0;
-    let cargo = 0;
-    let cargoMax = robotStats.cargo;
-    let totalOre = 0;
+    let cargo = [];
+    let cargoMax = Math.floor(robotStats.cargo);
+    let totalItems = 0;
     let foundParts = [];
     let totalGold = 0;
     let dead = false;
 
+    // Price lookup for discarding cheapest item.
+    const commodityPrice = {};
+    COMMODITIES.forEach(c => commodityPrice[c.id] = c.baseValue);
+
+    // Add items to cargo; if over limit, discard the cheapest until within limit.
+    function addToCargo(items) {
+      for (const id of items) cargo.push(id);
+      while (cargo.length > cargoMax) {
+        // Find cheapest item(s) — pick the first one at the lowest price.
+        let cheapestIdx = 0;
+        let cheapestPrice = commodityPrice[cargo[0]] || 0;
+        for (let i = 1; i < cargo.length; i++) {
+          const p = commodityPrice[cargo[i]] || 0;
+          if (p < cheapestPrice) { cheapestPrice = p; cheapestIdx = i; }
+        }
+        cargo.splice(cheapestIdx, 1);
+      }
+    }
+
     const step = () => {
       if (dead) {
-        log.push({ depth, text: '❌ SYSTEMS FAILED — drill lost.', hp, heat, cargo });
-        return { depth, hp, cargo, log, ore: totalOre, foundParts, gold: totalGold, maxDepth: depth, surfaced: false };
+        log.push({ depth, text: '❌ SYSTEMS FAILED — drill lost.', hp, heat, cargo: cargo.length, cargoItems: cargo });
+        return { depth, hp, cargo, log, foundParts, gold: totalGold, maxDepth: depth, surfaced: false };
       }
 
       const speed = robotStats.speed;
@@ -339,35 +388,38 @@ DrillDown.Engine = (() => {
           heat = Math.max(0, heat - 10);
           if (hp <= 0) {
             entry += '❌ Drill destroyed!';
-            log.push({ depth, text: entry, hp: 0, heat, cargo });
+            log.push({ depth, text: entry, hp: 0, heat, cargo: cargo.length, cargoItems: cargo });
             dead = true;
-            return { depth, hp: 0, heat, cargo, log, ore: totalOre, foundParts, gold: totalGold, maxDepth: depth, surfaced: false };
+            return { depth, hp: 0, heat, cargo, log, foundParts, gold: totalGold, maxDepth: depth, surfaced: false };
           }
         } else if (heat > 25) {
           entry += `🌡 Heat ${heat.toFixed(0)}%. `;
         }
 
-        if (cargo >= cargoMax) {
+        if (cargo.length >= cargoMax) {
           entry += '📦 Cargo full. ';
         }
 
         const evt = getEvent(depth, robotStats.detect);
         if (evt.type === 'loot') {
-          const space = cargoMax - cargo;
-          const taken = Math.min(evt.ore, Math.max(0, space));
-          cargo += taken;
-          totalOre += taken;
+          const before = cargo.length;
+          addToCargo(evt.items);
+          totalItems += evt.items.length;
+          const discarded = evt.items.length - (cargo.length - before);
           entry += evt.text;
-          if (taken < evt.ore) entry += ' (some lost, cargo full)';
+          if (discarded > 0) {
+            const map = {}; COMMODITIES.forEach(c => map[c.id] = c);
+            entry += ` (discarded ${discarded} ${map[evt.comId]?.name || 'ore'} — cargo full)`;
+          }
         } else if (evt.type === 'enemy') {
           const reduced = Math.max(0, evt.damage - robotStats.armor);
           hp -= reduced;
           entry += evt.text + (robotStats.armor > 0 ? ` (armor blocked ${evt.damage - reduced})` : '');
           if (hp <= 0) {
             entry += ' ❌ Destroyed!';
-            log.push({ depth, text: entry, hp: 0, heat, cargo });
+            log.push({ depth, text: entry, hp: 0, heat, cargo: cargo.length, cargoItems: cargo });
             dead = true;
-            return { depth, hp: 0, heat, cargo, log, ore: totalOre, foundParts, gold: totalGold, maxDepth: depth, surfaced: false };
+            return { depth, hp: 0, heat, cargo, log, foundParts, gold: totalGold, maxDepth: depth, surfaced: false };
           }
         } else if (evt.type === 'hazard') {
           heat += evt.heatSpike;
@@ -384,17 +436,17 @@ DrillDown.Engine = (() => {
           entry += evt.text;
         }
 
-        log.push({ depth, text: entry, hp: Math.max(0, hp), heat, cargo, cumOre: totalOre, cumGold: totalGold });
+        log.push({ depth, text: entry, hp: Math.max(0, hp), heat, cargo: cargo.length, cargoItems: cargo, cumItems: totalItems, cumGold: totalGold });
 
         // -- Auto-return policy: surface deliberately instead of running to the cap --
-        if (policy.cargoFull && cargo >= cargoMax) {
-          log.push({ depth, text: '📦 Cargo hold full — auto-returning to surface.', hp: Math.max(0, hp), heat: 0, cargo, cumOre: totalOre, cumGold: totalGold });
-          return { depth, hp, heat, cargo, log, ore: totalOre, foundParts, gold: totalGold, maxDepth: depth, surfaced: true };
+        if (policy.cargoFull && cargo.length >= cargoMax) {
+          log.push({ depth, text: '📦 Cargo hold full — auto-returning to surface.', hp: Math.max(0, hp), heat: 0, cargo: cargo.length, cargoItems: cargo, cumItems: totalItems, cumGold: totalGold });
+          return { depth, hp, heat, cargo, log, foundParts, gold: totalGold, maxDepth: depth, surfaced: true };
         }
         if (policy.hpPct > 0 && hp <= robotStats.hp * policy.hpPct) {
           const pct = Math.round((hp / robotStats.hp) * 100);
-          log.push({ depth, text: `⬆ Hull at ${pct}% — emergency ascent.`, hp: Math.max(0, hp), heat: 0, cargo, cumOre: totalOre, cumGold: totalGold });
-          return { depth, hp, heat, cargo, log, ore: totalOre, foundParts, gold: totalGold, maxDepth: depth, surfaced: true };
+          log.push({ depth, text: `⬆ Hull at ${pct}% — emergency ascent.`, hp: Math.max(0, hp), heat: 0, cargo: cargo.length, cargoItems: cargo, cumItems: totalItems, cumGold: totalGold });
+          return { depth, hp, heat, cargo, log, foundParts, gold: totalGold, maxDepth: depth, surfaced: true };
         }
       }
 
@@ -409,8 +461,8 @@ DrillDown.Engine = (() => {
     }
 
     if (!result) {
-      result = { depth, hp, cargo, log, ore: totalOre, foundParts, gold: totalGold, maxDepth: depth, surfaced: true };
-      log.push({ depth, text: '🔄 Surface reached. Safe return.', hp, heat: 0, cargo });
+      result = { depth, hp, cargo, log, foundParts, gold: totalGold, maxDepth: depth, surfaced: true };
+      log.push({ depth, text: '🔄 Surface reached. Safe return.', hp, heat: 0, cargo: cargo.length, cargoItems: cargo });
     }
 
     result.surfaced = result.hp > 0;
@@ -443,13 +495,17 @@ DrillDown.Engine = (() => {
   const RECYCLE_PROGRESS = { common: 10, uncommon: 20, rare: 40, unique: 70 };
 
   function craftablePartIds() {
-    return Object.keys(P).filter(id => P[id].rarity === 'rare' || P[id].rarity === 'unique');
+    return Object.keys(P).filter(id => (P[id].rarity === 'rare' || P[id].rarity === 'unique') && !P[id].upgradeOf);
   }
 
-  function randomCraftable() {
+  // Baseline odds that an awarded craft fragment is for a unique (vs a rare). Kept low
+  // so uniques stay rare prizes; callers (e.g. deep caches) may pass a higher chance.
+  const UNIQUE_FRAGMENT_CHANCE = 0.12;
+  function randomCraftable(uniqueChance) {
+    if (uniqueChance == null) uniqueChance = UNIQUE_FRAGMENT_CHANCE;
     const rares = [], uniques = [];
     for (const id of craftablePartIds()) (P[id].rarity === 'unique' ? uniques : rares).push(id);
-    const pool = (uniques.length && Math.random() < 0.25) ? uniques : (rares.length ? rares : uniques);
+    const pool = (uniques.length && Math.random() < uniqueChance) ? uniques : (rares.length ? rares : uniques);
     return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
   }
 
@@ -476,15 +532,64 @@ DrillDown.Engine = (() => {
     return out;
   }
 
+  // -- Mk II upgrades (combine 2 of a part + gold → its next tier) --
+  // Gold cost to combine two copies of `partId` into one Mk II.
+  function upgradeCost(partId) {
+    const def = P[partId];
+    if (!def || !def.upgradeTo) return 0;
+    return Math.round(def.cost * 1.5);
+  }
+
+  // Whether the player currently holds enough copies (and the part has an upgrade).
+  // Gold is checked by upgradePart so the UI can still show the button when short.
+  function canUpgrade(state, partId) {
+    const def = P[partId];
+    if (!def || !def.upgradeTo) return false;
+    return state.inventory.filter(id => id === partId).length >= 2;
+  }
+
+  // Consume 2 copies + gold from inventory and add one Mk II. Returns { ok, upgradedId, cost }.
+  function upgradePart(state, partId) {
+    const def = P[partId];
+    if (!def || !def.upgradeTo) return { ok: false };
+    const cost = upgradeCost(partId);
+    if (state.inventory.filter(id => id === partId).length < 2 || state.gold < cost) return { ok: false };
+    let removed = 0;
+    for (let i = state.inventory.length - 1; i >= 0 && removed < 2; i--) {
+      if (state.inventory[i] === partId) { state.inventory.splice(i, 1); removed++; }
+    }
+    state.gold -= cost;
+    state.inventory.push(def.upgradeTo);
+    return { ok: true, upgradedId: def.upgradeTo, cost };
+  }
+
   // -- Shop --
-  function generateShop(runNumber) {
-    const pool = { common: [], uncommon: [], rare: [] };
+  // Flat premium charged for the (otherwise craft-only) unique parts that appear in
+  // the shop at extreme depths — a gold shortcut around the fragment grind.
+  const SHOP_UNIQUE_PRICE = 600;
+
+  // Shop stock scales with how deep you've reached: the deeper your best run, the more
+  // the mix shifts from commons toward rares, and at extreme depths a single premium
+  // unique slot opens up. Returns the slot counts per rarity for a given best depth.
+  function shopPlan(bestDepth) {
+    bestDepth = bestDepth || 0;
+    if (bestDepth >= 300) return { name: 'Inner Core', common: 1, uncommon: 1, rare: 3, unique: 1 };
+    if (bestDepth >= 150) return { name: 'Outer Core', common: 1, uncommon: 2, rare: 3, unique: 0 };
+    if (bestDepth >= 75)  return { name: 'Deep Mantle', common: 2, uncommon: 2, rare: 2, unique: 0 };
+    if (bestDepth >= 25)  return { name: 'Mantle', common: 2, uncommon: 3, rare: 1, unique: 0 };
+    return { name: 'Surface', common: 3, uncommon: 2, rare: 1, unique: 0 };
+  }
+
+  function generateShop(runNumber, bestDepth) {
+    const pool = { common: [], uncommon: [], rare: [], unique: [] };
     for (const [id, def] of Object.entries(P)) {
-      if (def.rarity !== 'unique') pool[def.rarity].push(id);
+      if (def.upgradeOf) continue;               // Mk II upgrades are combine-only, never sold
+      if (pool[def.rarity]) pool[def.rarity].push(id);
     }
     const shop = [];
-    const counts = { common: 3, uncommon: 2, rare: 1 };
-    for (const [rarity, count] of Object.entries(counts)) {
+    const counts = shopPlan(bestDepth);
+    for (const rarity of ['common', 'uncommon', 'rare', 'unique']) {
+      const count = counts[rarity] || 0;
       const available = pool[rarity].filter(id => !shop.includes(id));
       for (let i = 0; i < count && available.length > 0; i++) {
         const idx = Math.floor(Math.random() * available.length);
@@ -496,7 +601,9 @@ DrillDown.Engine = (() => {
   }
 
   function shopCost(partId) {
-    return P[partId].cost;
+    const def = P[partId];
+    if (!def) return 0;
+    return def.rarity === 'unique' ? SHOP_UNIQUE_PRICE : def.cost;
   }
 
   // -- Save / load / migration --
@@ -554,7 +661,7 @@ DrillDown.Engine = (() => {
     if (typeof data.totalRuns !== 'number') data.totalRuns = 0;
     if (typeof data.highScore !== 'number') data.highScore = 0;
     // Shop wasn't persisted before v2 — generate one so the shop never opens empty/undefined.
-    if (!Array.isArray(data.shop)) data.shop = generateShop(data.runNumber);
+    if (!Array.isArray(data.shop)) data.shop = generateShop(data.runNumber, data.bestDepth);
 
     // Drop anything referencing a part id that no longer exists in PARTS.
     data.inventory = data.inventory.filter(id => P[id]);
@@ -589,9 +696,11 @@ DrillDown.Engine = (() => {
   return {
     createGrid, cloneGrid, canPlace, placePart, removePart, getPartAt, expandGrid,
     computeStats, rockHardness, getEvent, simulateRun,
-    generateShop, shopCost,
+    generateShop, shopCost, shopPlan,
     addFragment, recyclePart, RECYCLE_GOLD, RECYCLE_PROGRESS,
+    upgradeCost, canUpgrade, upgradePart,
     zoneFor, MILESTONES, gridSynergies,
-    save, load, migrate, SAVE_VERSION
+    save, load, migrate, SAVE_VERSION,
+    COMMODITIES, commodityForDepth, cargoValue
   };
 })();
