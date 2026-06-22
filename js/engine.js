@@ -369,6 +369,7 @@ DrillDown.Engine = (() => {
     // Price lookup for discarding cheapest item.
     const commodityPrice = {};
     COMMODITIES.forEach(c => commodityPrice[c.id] = c.baseValue);
+    const minCommodityValue = Math.min(...COMMODITIES.map(c => c.baseValue)); // the cheapest tier (iron)
 
     // Add items to cargo; if over limit, discard the cheapest until within limit.
     function addToCargo(items) {
@@ -469,8 +470,13 @@ DrillDown.Engine = (() => {
         log.push({ depth, text: entry, hp: Math.max(0, hp), heat, cargo: cargo.length, cargoItems: cargo, cumItems: totalItems, cumGold: totalGold });
 
         // -- Auto-return policy: surface deliberately instead of running to the cap --
-        if (policy.cargoFull && cargo.length >= cargoMax) {
-          log.push({ depth, text: '📦 Cargo hold full — auto-returning to surface.', hp: Math.max(0, hp), heat: 0, cargo: cargo.length, cargoItems: cargo, cumItems: totalItems, cumGold: totalGold });
+        // Smart cargo return: only bank once the hold is FULL of *valuable* goods — no
+        // cheapest-tier (iron) items left to upgrade. While cheap items remain, staying
+        // down keeps improving the haul (each new vein discards the cheapest), so the
+        // drone holds on rather than surfacing the instant it fills.
+        if (policy.cargoFull && cargo.length >= cargoMax &&
+            Math.min(...cargo.map(id => commodityPrice[id] || 0)) > minCommodityValue) {
+          log.push({ depth, text: '💎 Hold full of valuable goods — banking the haul.', hp: Math.max(0, hp), heat: 0, cargo: cargo.length, cargoItems: cargo, cumItems: totalItems, cumGold: totalGold });
           return { depth, hp, heat, cargo, log, foundParts, gold: totalGold, maxDepth: depth, surfaced: true };
         }
         if (policy.hpPct > 0 && hp <= robotStats.hp * policy.hpPct) {

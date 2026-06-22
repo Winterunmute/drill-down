@@ -868,7 +868,7 @@ DrillDown.UI = (() => {
       <div class="stat-divider"></div>
       <div class="policy-section">
         <div class="frag-label" title="Decide when the drone heads home — instead of drilling until it dies.">⬆ Return Policy</div>
-        <label class="policy-row"><input type="checkbox" id="pol-cargo" ${gs.returnPolicy.cargoFull ? 'checked' : ''}> Return when cargo full</label>
+        <label class="policy-row" title="Auto-surface once the hold is full AND holds no cheapest-tier (iron) items left to upgrade — so you bank a hold of valuable goods instead of risking it. While cheap items remain, diving deeper keeps improving the haul, so it won't bail early."><input type="checkbox" id="pol-cargo" ${gs.returnPolicy.cargoFull ? 'checked' : ''}> Bank a full hold of valuables</label>
         <div class="policy-row">
           <span>Emergency ascent</span>
           <select id="pol-hp">
@@ -1219,7 +1219,7 @@ DrillDown.UI = (() => {
           <p>Open the shop between runs. <b>Drag a part</b> to buy it — drop on the grid to place, or on your inventory to store.</p>
           <p>Ore converts to gold automatically. Find rare <b>Void Crystals</b> for bonus gold.</p>
           <p><b>♻ Recycle Bin</b> — drag any part you don't want here. You get a little gold <em>and</em> fill a salvage meter; rarer parts fill it faster. At 100% you craft a fragment toward a random rare/unique part — a second way to build toward the best gear.</p>
-          <p><b>⚠ You only keep your haul if you surface.</b> If the drone is destroyed, all ore and fragments it was carrying are lost. Set a <b>Return Policy</b> (return when cargo full / emergency ascent at low HP) to bank your loot before it's too late.</p>
+          <p><b>⚠ You only keep your haul if you surface.</b> If the drone is destroyed, all ore and fragments it was carrying are lost. Set a <b>Return Policy</b> (bank a full hold of valuables / emergency ascent at low HP) to bank your loot before it's too late. Cargo never hard-stops a run anymore — once full, each new vein swaps out your cheapest item, so diving deeper only upgrades your haul.</p>
         </div>
         <div class="help-section">
           <h3>🔧 Crafting & Fragments</h3>
