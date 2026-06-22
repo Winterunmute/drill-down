@@ -354,7 +354,8 @@ DrillDown.PARTS = {
     name: 'Mega Drill',
     type: 'drill',
     shape: [[0,0], [0,1], [1,0], [1,1]],
-    stats: { drillPower: 28, heatGen: 14 },
+    stats: { drillPower: 30, heatGen: 24 },
+    desc: 'A monstrous bite — but it runs blisteringly hot. Build serious cooling around it or it cooks the rig.',
     rarity: 'unique',
     cost: 0,
     color: '#ff6b6b',
@@ -365,7 +366,8 @@ DrillDown.PARTS = {
     name: 'Cryo Chamber',
     type: 'cooling',
     shape: [[0,0], [0,1], [1,0], [1,1]],
-    stats: { cooling: 22 },
+    stats: { cooling: 24, speed: -0.2 },
+    desc: 'Enormous heat-sink — drinks heat, but its bulk drags on the drone.',
     rarity: 'unique',
     cost: 0,
     color: '#48dbfb',
@@ -388,7 +390,8 @@ DrillDown.PARTS = {
     name: 'Void Pack',
     type: 'utility',
     shape: [[0,0], [0,1], [1,0], [1,1]],
-    stats: { cargo: 35 },
+    stats: { cargo: 35, speed: -0.3 },
+    desc: 'A bottomless hold — but a full void pack is heavy, dragging the drone down.',
     rarity: 'unique',
     cost: 0,
     color: '#5f27cd',
@@ -399,7 +402,8 @@ DrillDown.PARTS = {
     name: 'Warp Drive',
     type: 'utility',
     shape: [[0,0], [0,1]],
-    stats: { speed: 1.5, detect: 30 },
+    stats: { speed: 1.5, detect: 30, heatGen: 10 },
+    desc: 'Blistering speed and sensors, but the drive coils bleed heat into the rig every step.',
     rarity: 'unique',
     cost: 0,
     color: '#f368e0',
@@ -410,9 +414,9 @@ DrillDown.PARTS = {
     name: 'Singularity Core',
     type: 'core',
     shape: [[0,0], [0,1], [1,0], [1,1]],
-    stats: {},
+    stats: { heatGen: 8 },
     amp: 0.5,
-    desc: 'Amplifies all adjacent drill / cooling / defense parts by +50%.',
+    desc: 'Amplifies all adjacent drill / cooling / defense parts by +50% — but its unstable field radiates heat into the build.',
     rarity: 'unique',
     cost: 0,
     color: '#8854d0',
@@ -431,7 +435,7 @@ DrillDown.PARTS = {
 // slower (×1.3) so each tier is more heat-efficient; trade-off penalties stay fixed.
 (function generateUpgrades() {
   const UP_MULT = 1.6;                 // good stats per tier
-  const HEAT_MULT = 1.3;               // heat grows slower than power → better ratio each tier
+  const HEAT_MULT = 1.5;               // heat tracks power closely → tiers stay bigger, not free-er
   const NEXT_RARITY = { common: 'uncommon', uncommon: 'rare', rare: 'rare' };
   const TIERS = [
     { suffix: '_mk2', tier: 'Mk II' },

@@ -721,11 +721,11 @@ DrillDown.UI = (() => {
 
     const stats = Eng.computeStats(grid);
     const statHelp = {
-      '⬇ Drill': 'Overcomes rock hardness. Higher = less heat penalty from dense rock.',
-      '🌡 Heat Gen': 'Heat produced each depth step. Adds up fast — keep it cool!',
-      '❄ Cooling': 'Reduces heat each step. +2 bonus when placed next to a drill.',
-      '❤ HP': 'Health points. Run ends at 0. Armor reduces incoming damage.',
-      '🛡 Armor': 'Subtracted from enemy damage. Stacks from multiple sources.',
+      '⬇ Drill': 'Overcomes rock hardness. Higher = less heat penalty from dense rock. Diminishing returns once very high — stacking more drill keeps helping, but less each time.',
+      '🌡 Heat Gen': 'Heat produced each depth step. Adds up fast — keep it cool! (Not capped — big drills really do run hot.)',
+      '❄ Cooling': 'Reduces heat each step. +2 bonus when placed next to a drill. Not capped, so it can always offset heat.',
+      '❤ HP': 'Health points. Run ends at 0. Armor reduces incoming damage. Diminishing returns at very high totals.',
+      '🛡 Armor': 'Subtracted from enemy damage. Stacks from multiple sources, with diminishing returns when stacked very high.',
       '📦 Cargo': 'How much ore you can carry per run. More = more profit.',
       '⚡ Speed': 'Depth steps per tick. Faster = more loot per second.',
       '📡 Detect': 'Bonus to find rare loot and events. Stacks additively.'

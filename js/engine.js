@@ -90,6 +90,27 @@ DrillDown.Engine = (() => {
   }
 
   // -- Robot Stats --
+  // Diminishing returns / soft power limiting. Each capped stat keeps its full value up
+  // to a threshold, then extra points are worth progressively less (sqrt falloff) — so
+  // early/mid upgrades feel strong while late-game stacking flattens instead of trivially
+  // scaling depth. Unbounded (no hard ceiling): any value is reachable, just with effort.
+  // NOTE: cooling is intentionally NOT capped — it must stay able to offset the
+  // (uncapped) heatGen of big builds, or heat management inverts and more investment
+  // makes runs worse. We cap the stats that otherwise trivialize content directly.
+  // Logarithmic falloff above the threshold `t`: value is unchanged up to t, then each
+  // extra point is worth less. Smooth at t (slope 1) and always ≤ raw — a cap never
+  // boosts — yet unbounded, so any value is reachable with enough investment. Larger `k`
+  // = gentler diminishing.
+  const SOFT_CAPS = {
+    drillPower: { t: 45,  k: 60 },
+    hp:         { t: 200, k: 300 },
+    armor:      { t: 12,  k: 14 }
+  };
+  function softCap(raw, cap) {
+    if (!cap || raw <= cap.t) return raw;
+    return Math.round(cap.t + cap.k * Math.log(1 + (raw - cap.t) / cap.k));
+  }
+
   function computeStats(grid) {
     const stats = { drillPower: 0, heatGen: 0, cooling: 0, hp: 20, armor: 0, cargo: 4, speed: 1.0, detect: 0 };
     for (const pid in grid.placed) {
@@ -155,6 +176,10 @@ DrillDown.Engine = (() => {
         }
       }
     }
+
+    // Soft power limiting: flatten the big offensive/defensive stats so over-stacking
+    // (esp. high Mk tiers) yields diminishing depth rather than trivial scaling.
+    for (const k in SOFT_CAPS) stats[k] = softCap(stats[k], SOFT_CAPS[k]);
 
     // Floors: part trade-offs (e.g. heavy armor's -speed) can subtract, but the
     // robot still needs to move, carry, and survive.

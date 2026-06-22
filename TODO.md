@@ -197,6 +197,7 @@ These changes aim to ensure:
 
 ### ⚡ IMPLEMENTATION PRIORITY
 
-1. Add diminishing returns OR global instability first
-2. Then adjust unique drop rarity (gating or dilution)
-3. Finally introduce unique trade-offs for build tension
+1. ✅ **Diminishing returns (DONE)** — `Engine.computeStats` applies a logarithmic soft cap (`SOFT_CAPS`/`softCap`) to drillPower/hp/armor; cooling stays linear so it can offset uncapped heat. Mk heat scaling raised (`HEAT_MULT` 1.3→1.5) so tiers stay bigger, not free-er.
+2. ✅ **Unique drop rarity (DONE)** — cache fragments use a depth-scaled unique chance (~0 surface → capped 18% deep); recycle awards at 12% (`UNIQUE_FRAGMENT_CHANCE`).
+3. ✅ **Unique trade-offs (DONE, first pass)** — Mega Drill / Warp Drive / Singularity Core now generate heat; Cryo Chamber / Void Pack carry a speed penalty. Deeper conditional/adjacency-based drawbacks (Option C) remain a future enhancement.
+   - Global instability (Option B) and grid-efficiency pressure (Option C) remain open as alternative/additional levers.
