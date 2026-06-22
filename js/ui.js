@@ -1,11 +1,36 @@
 DrillDown.UI = (() => {
   const Eng = DrillDown.Engine;
+  const A = DrillDown.Audio;
   const P = DrillDown.PARTS;
   const CELL = 76;
   const GAP = 2;
 
+  function shake() {
+    const el = document.getElementById('screen-drill');
+    if (!el) return;
+    el.classList.remove('shake');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('shake');
+    setTimeout(() => el.classList.remove('shake'), 400);
+  }
+
   let dragState = null;
   let tooltipEl = null;
+
+  // Normalize mouse + touch events to a single {clientX, clientY} point.
+  function evtPoint(e) {
+    if (e.touches && e.touches.length) return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+    if (e.changedTouches && e.changedTouches.length) return { clientX: e.changedTouches[0].clientX, clientY: e.changedTouches[0].clientY };
+    return { clientX: e.clientX, clientY: e.clientY };
+  }
+
+  function isDragging() { return !!dragState; }
+
+  function pointInEl(pt, el) {
+    if (!pt || !el) return false;
+    const r = el.getBoundingClientRect();
+    return pt.clientX >= r.left && pt.clientX <= r.right && pt.clientY >= r.top && pt.clientY <= r.bottom;
+  }
 
   function initTooltip() {
     tooltipEl = document.createElement('div');
@@ -18,16 +43,19 @@ DrillDown.UI = (() => {
     const def = P[partId];
     if (!def) return;
     const lines = [];
-    lines.push(`<div class="tt-header" style="color:${DrillDown.RARITY_COLORS[def.rarity]}">${def.emoji} ${def.name}</div>`);
-    lines.push(`<div class="tt-rarity">${def.rarity.toUpperCase()}</div>`);
-    if (def.stats.drillPower) lines.push(`⬇ Drill Power: <b>${def.stats.drillPower}</b> <span class="tt-desc">overcomes rock</span>`);
-    if (def.stats.heatGen) lines.push(`🌡 Heat Gen: <b>+${def.stats.heatGen}/step</b> <span class="tt-desc">generated while drilling</span>`);
-    if (def.stats.cooling) lines.push(`❄ Cooling: <b>${def.stats.cooling}</b> <span class="tt-desc">reduces heat per tick</span>`);
-    if (def.stats.hp) lines.push(`❤ HP: <b>+${def.stats.hp}</b> <span class="tt-desc">max health bonus</span>`);
-    if (def.stats.armor) lines.push(`🛡 Armor: <b>${def.stats.armor}</b> <span class="tt-desc">reduces incoming damage</span>`);
-    if (def.stats.cargo) lines.push(`📦 Cargo: <b>+${def.stats.cargo}</b> <span class="tt-desc">ore capacity</span>`);
-    if (def.stats.speed) lines.push(`⚡ Speed: <b>+${def.stats.speed}</b> <span class="tt-desc">ticks per step</span>`);
-    if (def.stats.detect) lines.push(`📡 Detect: <b>+${def.stats.detect}%</b> <span class="tt-desc">loot chance bonus</span>`);
+    lines.push(`<div class="tt-header" style="color:${DrillDown.RARITY_COLORS[def.rarity]}">${def.name}</div>`);
+    lines.push(`<div class="tt-rarity">${def.rarity.toUpperCase()} · ${(def.type || '').toUpperCase()}</div>`);
+    if (def.stats.drillPower) lines.push(`⬇ Drill Power: <b>${def.stats.drillPower}</b><div class="tt-desc">Cuts through rock. More power means faster descent and far less heat penalty when the rock gets dense.</div>`);
+    if (def.stats.heatGen) lines.push(`🌡 Heat Gen: <b>+${def.stats.heatGen}/step</b><div class="tt-desc">Heat added every step while drilling. Above 40% it burns your HP — pair drills with enough cooling to stay safe.</div>`);
+    if (def.stats.cooling) lines.push(`❄ Cooling: <b>${def.stats.cooling}</b><div class="tt-desc">Bleeds off heat each step. Gains +2 when placed next to a drill (Cooled Drill synergy).</div>`);
+    if (def.stats.hp) lines.push(`❤ HP: <b>+${def.stats.hp}</b><div class="tt-desc">Raises max health. The run ends instantly when HP reaches 0 and the haul is lost.</div>`);
+    if (def.stats.armor) lines.push(`🛡 Armor: <b>${def.stats.armor}</b><div class="tt-desc">Flat damage reduction subtracted from every enemy hit. Stacks across all your defense parts.</div>`);
+    if (def.stats.cargo) lines.push(`📦 Cargo: <b>+${def.stats.cargo}</b><div class="tt-desc">Max ore you can haul per run. Once cargo is full you stop collecting — more cargo = more gold.</div>`);
+    if (def.stats.speed) lines.push(`⚡ Speed: <b>+${def.stats.speed}</b><div class="tt-desc">Extra depth steps per tick. Descend faster, but each step also rolls more heat and more enemies.</div>`);
+    if (def.stats.detect) lines.push(`📡 Detect: <b>+${def.stats.detect}%</b><div class="tt-desc">Boosts the odds of finding ore veins, rare Void Crystals, and ancient caches as you drill.</div>`);
+    const tip = synergyTip(def);
+    if (tip) lines.push(`<div class="tt-tip">🔗 ${tip}</div>`);
+    if (def.desc) lines.push(`<span class="tt-amp">◆ ${def.desc}</span>`);
     if (def.cost) lines.push(`<div class="tt-cost">💰 ${def.cost}g</div>`);
 
     tooltipEl.innerHTML = lines.join('<br>');
@@ -94,30 +122,22 @@ DrillDown.UI = (() => {
     const statsLine = statSummary(def);
     el.innerHTML = `
       <div class="part-card-bg" style="background:${def.color}22; border-color:${def.color}"></div>
-      <div class="part-card-icon">${def.emoji}</div>
       <div class="part-card-name">${def.name}</div>
       <div class="part-card-rarity ${def.rarity}">${def.rarity}</div>
       <div class="part-card-cost">${opts.showCost ? def.cost + 'g' : ''}</div>
       <div class="part-card-stats">${statsLine}</div>
     `;
 
-    if (opts.onSell) {
-      const sellBtn = document.createElement('button');
-      sellBtn.className = 'sell-btn';
-      sellBtn.textContent = 'Sell ' + Math.floor(def.cost * 0.5) + 'g';
-      sellBtn.onclick = (e) => { e.stopPropagation(); opts.onSell(partId); };
-      el.appendChild(sellBtn);
-    }
-
     // Hover tooltip
     el.addEventListener('mouseenter', (e) => { showTooltip(partId, e); });
     el.addEventListener('mousemove', (e) => { positionTooltip(e); });
     el.addEventListener('mouseleave', hideTooltip);
 
-    // Mousedown: drag from inventory, or shop
-    el.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
+    // Pointer down (mouse or touch): drag from inventory, or shop
+    const onDown = (e) => {
+      if (e.type === 'mousedown' && e.button !== 0) return;
       if (e.target.closest('.sell-btn')) return;
+      if (e.type === 'touchstart' && e.cancelable) e.preventDefault();
       if (opts.fromShop) {
         const gs = DrillDown.Game.state;
         if (gs.gold < def.cost) return;
@@ -126,9 +146,24 @@ DrillDown.UI = (() => {
         return;
       }
       startDrag(partId, false, null, e, false);
-    });
+    };
+    el.addEventListener('mousedown', onDown);
+    el.addEventListener('touchstart', onDown, { passive: false });
 
     return el;
+  }
+
+  // Placement advice shown in the tooltip, keyed off the part's type. Mirrors the
+  // adjacency rules in Engine.gridSynergies / the help screen — keep them in sync.
+  function synergyTip(def) {
+    switch (def.type) {
+      case 'drill': return 'Place beside cooling for the Cooled Drill bonus (+2 cooling, +1 drill), or beside another drill for +2 drill each.';
+      case 'cooling': return 'Place beside a drill for +2 cooling, or beside other cooling for +1 cooling each.';
+      case 'defense': return 'Place beside other defense for +3 HP each, or beside a drill to add +1 armor to the drill.';
+      case 'utility': return 'Place beside a drill or cooling for +1 cargo, or beside other utility for +3 detect each.';
+      case 'core': return 'Surround it with your strongest drill / cooling / defense parts to amplify them.';
+      default: return '';
+    }
   }
 
   function statSummary(def) {
@@ -141,6 +176,7 @@ DrillDown.UI = (() => {
     if (def.stats.speed) parts.push(`⚡${def.stats.speed}`);
     if (def.stats.detect) parts.push(`📡${def.stats.detect}%`);
     if (def.stats.heatGen) parts.push(`🌡+${def.stats.heatGen}`);
+    if (def.amp) parts.push(`◆+${Math.round(def.amp * 100)}%`);
     return parts.join(' ');
   }
 
@@ -158,26 +194,31 @@ DrillDown.UI = (() => {
     ghost.style.height = (h * CELL + (h - 1) * GAP) + 'px';
     ghost.style.background = def.color + '88';
     ghost.style.borderColor = DrillDown.RARITY_COLORS[def.rarity];
-    ghost.innerHTML = `<span>${def.emoji} ${def.name}</span>`;
-    ghost.style.left = (e.clientX - 30) + 'px';
-    ghost.style.top = (e.clientY - 30) + 'px';
+    ghost.innerHTML = `<span>${def.name}</span>`;
+    const pt = evtPoint(e);
+    ghost.style.left = (pt.clientX - 30) + 'px';
+    ghost.style.top = (pt.clientY - 30) + 'px';
     document.body.appendChild(ghost);
 
     dragState = { partId, rotated, ghost, fromGrid: !!pid, pid, partDef: def, fromShop: !!fromShop };
     document.addEventListener('mousemove', onDragMove);
     document.addEventListener('mouseup', onDragEnd);
+    document.addEventListener('touchmove', onDragMove, { passive: false });
+    document.addEventListener('touchend', onDragEnd);
   }
 
   function onDragMove(e) {
     if (!dragState) return;
-    dragState.ghost.style.left = (e.clientX - 30) + 'px';
-    dragState.ghost.style.top = (e.clientY - 30) + 'px';
+    if (e.type === 'touchmove' && e.cancelable) e.preventDefault();
+    const pt = evtPoint(e);
+    dragState.ghost.style.left = (pt.clientX - 30) + 'px';
+    dragState.ghost.style.top = (pt.clientY - 30) + 'px';
 
     const gridEl = document.getElementById('grid-container');
     if (!gridEl) return;
     const rect = gridEl.getBoundingClientRect();
-    const col = Math.floor((e.clientX - rect.left) / (CELL + GAP));
-    const row = Math.floor((e.clientY - rect.top) / (CELL + GAP));
+    const col = Math.floor((pt.clientX - rect.left) / (CELL + GAP));
+    const row = Math.floor((pt.clientY - rect.top) / (CELL + GAP));
     const def = dragState.partDef;
     const shape = dragState.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
     const valid = row >= 0 && col >= 0 && Eng.canPlace(DrillDown.Game.state.grid, dragState.partId, row, col, dragState.rotated);
@@ -190,14 +231,20 @@ DrillDown.UI = (() => {
         if (cell) cell.classList.add('grid-hover-ok');
       }
     }
+
+    const sellBin = document.getElementById('sell-bin');
+    if (sellBin) sellBin.classList.toggle('bin-hover', !dragState.fromShop && pointInEl(pt, sellBin));
   }
 
   function endDrag(e) {
     document.removeEventListener('mousemove', onDragMove);
     document.removeEventListener('mouseup', onDragEnd);
+    document.removeEventListener('touchmove', onDragMove);
+    document.removeEventListener('touchend', onDragEnd);
     if (!dragState) return;
     const gs = DrillDown.Game.state;
     const gridEl = document.getElementById('grid-container');
+    const pt = e ? evtPoint(e) : null;
     let placed = false;
     let purchased = false;
 
@@ -211,10 +258,10 @@ DrillDown.UI = (() => {
       purchased = true;
     };
 
-    if (gridEl && e) {
+    if (gridEl && pt) {
       const rect = gridEl.getBoundingClientRect();
-      const col = Math.floor((e.clientX - rect.left) / (CELL + GAP));
-      const row = Math.floor((e.clientY - rect.top) / (CELL + GAP));
+      const col = Math.floor((pt.clientX - rect.left) / (CELL + GAP));
+      const row = Math.floor((pt.clientY - rect.top) / (CELL + GAP));
 
       // Dropped on valid grid cell
       if (row >= 0 && col >= 0 && Eng.canPlace(gs.grid, dragState.partId, row, col, dragState.rotated)) {
@@ -246,15 +293,30 @@ DrillDown.UI = (() => {
           }
         }
       } else {
-        // Dropped outside grid — check inventory panel
-        const invPanel = document.getElementById('workshop-left');
-        if (invPanel && dragState.fromShop) {
-          const ir = invPanel.getBoundingClientRect();
-          if (e.clientX >= ir.left && e.clientX <= ir.right && e.clientY >= ir.top && e.clientY <= ir.bottom) {
-            doPurchase();
-            if (purchased) {
-              gs.inventory.push(dragState.partId);
-              placed = true;
+        const sellBin = document.getElementById('sell-bin');
+        const overBin = pointInEl(pt, sellBin);
+        if (overBin && !dragState.fromShop) {
+          // Sell: refund 50% of cost. Grid parts were already removed at drag start.
+          const def = P[dragState.partId];
+          const refund = Math.floor((def?.cost || 0) * 0.5);
+          if (dragState.fromGrid) {
+            gs.gold += refund;
+            placed = true;
+          } else {
+            const idx = gs.inventory.indexOf(dragState.partId);
+            if (idx >= 0) { gs.inventory.splice(idx, 1); gs.gold += refund; placed = true; }
+          }
+        } else if (!overBin) {
+          // Dropped outside grid — check inventory panel (buy from shop into storage)
+          const invPanel = document.getElementById('workshop-left');
+          if (invPanel && dragState.fromShop) {
+            const ir = invPanel.getBoundingClientRect();
+            if (pt.clientX >= ir.left && pt.clientX <= ir.right && pt.clientY >= ir.top && pt.clientY <= ir.bottom) {
+              doPurchase();
+              if (purchased) {
+                gs.inventory.push(dragState.partId);
+                placed = true;
+              }
             }
           }
         }
@@ -267,6 +329,7 @@ DrillDown.UI = (() => {
     }
 
     document.querySelectorAll('.grid-hover-ok, .grid-hover-bad').forEach(el => el.classList.remove('grid-hover-ok', 'grid-hover-bad'));
+    document.getElementById('sell-bin')?.classList.remove('bin-hover');
     dragState.ghost.remove();
     dragState = null;
     Eng.save(gs);
@@ -278,6 +341,7 @@ DrillDown.UI = (() => {
 
   function renderWorkshop() {
     const gs = DrillDown.Game.state;
+    if (!gs.returnPolicy) gs.returnPolicy = { cargoFull: true, hpPct: 0 };
     showScreen('workshop');
     const left = document.getElementById('workshop-left');
     const center = document.getElementById('workshop-center');
@@ -293,14 +357,15 @@ DrillDown.UI = (() => {
           if (def) {
             const needed = def.rarity === 'unique' ? 3 : 2;
             const bars = '■'.repeat(n) + '□'.repeat(needed - n);
-            fragHtml += `<div class="frag-row" style="color:${DrillDown.RARITY_COLORS[def.rarity]}">${def.emoji} ${def.name}: ${bars} ${n}/${needed}</div>`;
+            fragHtml += `<div class="frag-row" style="color:${DrillDown.RARITY_COLORS[def.rarity]}">${def.name}: ${bars} ${n}/${needed}</div>`;
           }
         }
         fragHtml += '</div>';
       }
     }
 
-    left.innerHTML = '<h3>Parts</h3><div class="inventory-grid"></div>';
+    left.innerHTML = '<h3>Parts</h3><div class="left-scroll"><div class="inventory-grid"></div></div>';
+    const leftScroll = left.querySelector('.left-scroll');
     const invGrid = left.querySelector('.inventory-grid');
     const invCounts = {};
     gs.inventory.forEach(id => { invCounts[id] = (invCounts[id] || 0) + 1; });
@@ -317,7 +382,10 @@ DrillDown.UI = (() => {
     if (gs.inventory.length === 0) {
       invGrid.innerHTML = '<div class="empty-hint">No parts. Buy from shop!</div>';
     }
-    if (fragHtml) left.insertAdjacentHTML('beforeend', fragHtml);
+    if (fragHtml) leftScroll.insertAdjacentHTML('beforeend', fragHtml);
+    // Sell bin is pinned to the bottom of the left bar (outside the scroll area).
+    left.insertAdjacentHTML('beforeend',
+      '<div id="sell-bin"><div class="sell-bin-title">SELL BIN</div><div class="sell-bin-hint">drag a part here &middot; 50% refund</div></div>');
 
     const grid = gs.grid;
     const totalW = grid.cols * (CELL + GAP) - GAP;
@@ -368,19 +436,22 @@ DrillDown.UI = (() => {
       el.style.background = def.color + '44';
       el.style.borderColor = DrillDown.RARITY_COLORS[def.rarity];
       el.dataset.pid = pid;
-      el.innerHTML = `<span>${def.emoji}</span><span class="placed-name">${def.name}</span>`;
+      el.innerHTML = `<span class="placed-name">${def.name}</span>`;
 
       // Tooltip on placed parts
       el.addEventListener('mouseenter', (e) => { showTooltip(p.id, e); });
       el.addEventListener('mousemove', (e) => { positionTooltip(e); });
       el.addEventListener('mouseleave', hideTooltip);
 
-      el.addEventListener('mousedown', (e) => {
-        if (e.button !== 0) return;
+      const onPartDown = (e) => {
+        if (e.type === 'mousedown' && e.button !== 0) return;
         e.stopPropagation();
+        if (e.type === 'touchstart' && e.cancelable) e.preventDefault();
         Eng.removePart(grid, pid);
         startDrag(p.id, p.rotated, pid, e);
-      });
+      };
+      el.addEventListener('mousedown', onPartDown);
+      el.addEventListener('touchstart', onPartDown, { passive: false });
 
       el.addEventListener('dblclick', (e) => {
         e.stopPropagation();
@@ -415,6 +486,11 @@ DrillDown.UI = (() => {
         if (cell) cell.classList.add('occupied');
       }
     }
+
+    // Highlight parts taking part in a synergy / amped by a core
+    const syn = Eng.gridSynergies(grid);
+    syn.synergizedPids.forEach(pid => gridCont.querySelector(`.placed-part[data-pid="${pid}"]`)?.classList.add('synergy-active'));
+    syn.ampedPids.forEach(pid => gridCont.querySelector(`.placed-part[data-pid="${pid}"]`)?.classList.add('amped'));
 
     const expandBtn = document.getElementById('btn-expand');
     if (expandBtn) {
@@ -461,12 +537,43 @@ DrillDown.UI = (() => {
       <div class="stat-row gold-row"><span class="stat-label">💰 Gold</span><span class="stat-val">${gs.gold}</span></div>
       <div class="stat-row"><span class="stat-label">🏆 Best Depth</span><span class="stat-val">${gs.bestDepth || 0}</span></div>
       <div class="stat-row"><span class="stat-label">🎯 Run</span><span class="stat-val">#${gs.runNumber}</span></div>
+      ${syn.synergies.length ? `
+      <div class="stat-divider"></div>
+      <div class="synergy-section">
+        <div class="frag-label">🔗 Active Synergies</div>
+        ${syn.synergies.map(s => `<div class="syn-row"><span>${s.label}${s.count > 1 ? ` ×${s.count}` : ''}</span><span class="syn-bonus">${s.bonus}</span></div>`).join('')}
+      </div>` : ''}
+      <div class="stat-divider"></div>
+      <div class="policy-section">
+        <div class="frag-label" title="Decide when the drone heads home — instead of drilling until it dies.">⬆ Return Policy</div>
+        <label class="policy-row"><input type="checkbox" id="pol-cargo" ${gs.returnPolicy.cargoFull ? 'checked' : ''}> Return when cargo full</label>
+        <div class="policy-row">
+          <span>Emergency ascent</span>
+          <select id="pol-hp">
+            <option value="0" ${gs.returnPolicy.hpPct === 0 ? 'selected' : ''}>Off</option>
+            <option value="0.1" ${gs.returnPolicy.hpPct === 0.1 ? 'selected' : ''}>10% HP</option>
+            <option value="0.25" ${gs.returnPolicy.hpPct === 0.25 ? 'selected' : ''}>25% HP</option>
+            <option value="0.5" ${gs.returnPolicy.hpPct === 0.5 ? 'selected' : ''}>50% HP</option>
+          </select>
+        </div>
+      </div>
       <button class="btn btn-secondary shop-btn" id="btn-open-shop">🏪 Shop</button>
       <button class="btn btn-secondary shop-btn" id="btn-help-open" style="margin-top:4px;font-size:12px;">📖 How to Play</button>
+      <button class="btn btn-secondary shop-btn" id="btn-mute" style="margin-top:4px;font-size:12px;">${A?.isMuted() ? '🔇 Sound: Off' : '🔊 Sound: On'}</button>
     `;
     document.getElementById('btn-open-shop').onclick = () => renderShop();
     document.getElementById('btn-help-open').onclick = () => renderHelp();
     document.getElementById('btn-help').onclick = () => renderHelp();
+    document.getElementById('btn-mute').onclick = (e) => {
+      const m = A?.toggle();
+      e.target.textContent = m ? '🔇 Sound: Off' : '🔊 Sound: On';
+      if (!m) A?.resume();
+    };
+
+    const polCargo = document.getElementById('pol-cargo');
+    if (polCargo) polCargo.onchange = (e) => { gs.returnPolicy.cargoFull = e.target.checked; Eng.save(gs); };
+    const polHp = document.getElementById('pol-hp');
+    if (polHp) polHp.onchange = (e) => { gs.returnPolicy.hpPct = parseFloat(e.target.value); Eng.save(gs); };
   }
 
   function renderShop() {
@@ -502,14 +609,24 @@ DrillDown.UI = (() => {
 
   function renderDrill() {
     showScreen('drill');
+    A?.resume();
+    A?.launch();
+    A?.humStart();
     const gs = DrillDown.Game.state;
     const cont = document.getElementById('screen-drill');
     cont.innerHTML = `
       <div class="drill-status" id="drill-status">
         <span>Depth: <strong id="drill-depth">0</strong></span>
+        <span>Zone: <strong id="drill-zone">The Crust</strong></span>
         <span>❤ HP: <strong id="drill-hp">0</strong>/<strong id="drill-hp-max">0</strong></span>
         <span>🌡 Heat: <strong id="drill-heat">0</strong></span>
         <span>📦 <strong id="drill-cargo">0</strong>/<strong id="drill-cargo-max">0</strong></span>
+      </div>
+      <div id="dig-view" class="digging">
+        <div class="dig-strata"></div>
+        <div class="dig-glow"></div>
+        <div class="dig-drone"><div class="dig-body"></div><div class="dig-bit"></div></div>
+        <div class="dig-depth" id="dig-depth">0m</div>
       </div>
       <div class="drill-log" id="drill-log"></div>
       <div class="drill-controls">
@@ -519,7 +636,8 @@ DrillDown.UI = (() => {
     `;
 
     const stats = Eng.computeStats(gs.grid);
-    const result = Eng.simulateRun(stats, 0);
+    const policy = gs.returnPolicy || { cargoFull: true, hpPct: 0 };
+    const result = Eng.simulateRun(stats, 0, policy);
 
     const logDiv = document.getElementById('drill-log');
     let idx = 0;
@@ -537,11 +655,18 @@ DrillDown.UI = (() => {
       else if (entry.text.includes('Heat vent') || entry.text.includes('attacks')) lineEl.classList.add('log-warn');
       else if (entry.text.includes('Void Crystal') || entry.text.includes('cache')) lineEl.classList.add('log-rare');
       else if (entry.text.includes('Ore vein')) lineEl.classList.add('log-loot');
+      // Sound cues
+      if (entry.text.includes('OVERHEAT') || entry.text.includes('Destroyed')) { A?.overheat(); shake(); }
+      else if (entry.text.includes('Void Crystal') || entry.text.includes('cache') || entry.text.includes('Ore vein')) A?.loot();
+      else if (Math.random() < 0.6) A?.tick();
       lineEl.textContent = entry.text;
       logDiv.appendChild(lineEl);
       logDiv.scrollTop = logDiv.scrollHeight;
 
       document.getElementById('drill-depth').textContent = entry.depth || idx + 1;
+      const digDepth = document.getElementById('dig-depth');
+      if (digDepth) digDepth.textContent = (entry.depth || idx + 1) + 'm';
+      document.getElementById('drill-zone').textContent = Eng.zoneFor(entry.depth || 0).name;
       document.getElementById('drill-hp').textContent = Math.max(0, entry.hp || 0);
       document.getElementById('drill-hp-max').textContent = stats.hp;
       document.getElementById('drill-heat').textContent = Math.floor(entry.heat || 0) + '%';
@@ -553,25 +678,87 @@ DrillDown.UI = (() => {
     }
 
     function finishRun(runResult, robotStats) {
+      A?.humStop();
+      document.getElementById('dig-view')?.classList.remove('digging');
+      const dd = document.getElementById('dig-depth');
+      if (dd) dd.textContent = runResult.maxDepth + 'm';
       gs.lastDepth = runResult.maxDepth;
-      gs.gold += runResult.gold;
-      // Process fragments — 2 for rare, 3 for unique
+      const survived = runResult.surfaced;
+      // The haul only banks if the drone makes it back. Destroyed = everything carried is lost.
+      const oreGold = survived ? Math.floor(runResult.ore * 2) : 0;
+      const bonusGold = survived ? runResult.gold : 0;
+      gs.gold += bonusGold + oreGold;
       if (!gs.fragments) gs.fragments = {};
-      for (const partId of runResult.foundParts) {
-        const def = P[partId];
-        const needed = def && def.rarity === 'unique' ? 3 : 2;
-        gs.fragments[partId] = (gs.fragments[partId] || 0) + 1;
-        if (gs.fragments[partId] >= needed) {
-          gs.fragments[partId] = 0;
-          gs.inventory.push(partId);
+      if (survived) {
+        // Process fragments — 2 for rare, 3 for unique
+        for (const partId of runResult.foundParts) {
+          const def = P[partId];
+          const needed = def && def.rarity === 'unique' ? 3 : 2;
+          gs.fragments[partId] = (gs.fragments[partId] || 0) + 1;
+          if (gs.fragments[partId] >= needed) {
+            gs.fragments[partId] = 0;
+            gs.inventory.push(partId);
+          }
         }
       }
-      const oreGold = Math.floor(runResult.ore * 1.5);
-      gs.gold += oreGold;
       gs.totalRuns = (gs.totalRuns || 0) + 1;
       if (runResult.maxDepth > (gs.bestDepth || 0)) gs.bestDepth = runResult.maxDepth;
+
+      // Depth milestones — one-time achievement rewards, granted even on death (you reached it).
+      if (!gs.milestones) gs.milestones = [];
+      const newMilestones = [];
+      for (const m of Eng.MILESTONES) {
+        if (runResult.maxDepth >= m.depth && !gs.milestones.includes(m.depth)) {
+          gs.milestones.push(m.depth);
+          gs.gold += m.reward;
+          newMilestones.push(m);
+        }
+      }
+
       Eng.save(gs);
-      setTimeout(() => renderResults(runResult, oreGold), 500);
+      setTimeout(() => showComplete(runResult, oreGold, bonusGold, newMilestones), 400);
+    }
+
+    // Render the run summary in place — keeps the full log on screen (no separate results page)
+    function showComplete(runResult, oreGold, bonusGold, newMilestones) {
+      const survived = runResult.surfaced;
+      const milestoneGold = (newMilestones || []).reduce((s, m) => s + m.reward, 0);
+      const totalGold = bonusGold + oreGold + milestoneGold;
+      const newBest = runResult.maxDepth >= (gs.bestDepth || 0);
+      const zone = Eng.zoneFor(runResult.maxDepth);
+      const statusBar = document.getElementById('drill-status');
+      if (statusBar) {
+        statusBar.classList.add('run-complete-bar');
+        const mileHtml = (newMilestones && newMilestones.length)
+          ? `<div class="rc-milestones">🏅 ${newMilestones.map(m => `${m.name} <span class="gold">+${m.reward}g</span>`).join(' · ')}</div>`
+          : '';
+        statusBar.innerHTML = `
+          <div class="rc-title ${survived ? '' : 'rc-fail'}">${survived ? '⛰ RUN COMPLETE' : '❌ DRILL LOST — HAUL FORFEIT'}</div>
+          <div class="rc-chips">
+            <span class="rc-chip"><label>Max Depth</label><b>${runResult.maxDepth}${newBest ? ' ★' : ''}</b></span>
+            <span class="rc-chip"><label>Zone</label><b>${zone.name}</b></span>
+            <span class="rc-chip"><label>Best Ever</label><b>${gs.bestDepth}</b></span>
+            <span class="rc-chip"><label>Status</label><b class="${survived ? 'text-ok' : 'text-fail'}">${survived ? 'Surfaced' : 'Destroyed'}</b></span>
+            <span class="rc-chip"><label>Ore Mined</label><b class="${survived ? '' : 'text-fail'}">${runResult.ore}${survived ? ` (${oreGold}g)` : ' (lost)'}</b></span>
+            <span class="rc-chip"><label>Fragments</label><b class="${survived ? '' : 'text-fail'}">${runResult.foundParts.length}${survived ? '' : ' (lost)'}</b></span>
+            <span class="rc-chip"><label>Gold Earned</label><b class="gold">+${totalGold}g</b></span>
+          </div>
+          ${mileHtml}`;
+      }
+      if (survived) A?.surface(); else A?.destroyed();
+      if (newMilestones && newMilestones.length) setTimeout(() => A?.milestone(), 550);
+      const controls = document.querySelector('#screen-drill .drill-controls');
+      if (controls) {
+        controls.innerHTML = `
+          <button class="btn btn-primary" id="btn-relaunch">⬇ Relaunch Drone</button>
+          <button class="btn btn-secondary" id="btn-back-workshop">⬆ Workshop</button>`;
+        document.getElementById('btn-relaunch').onclick = () => DrillDown.Game.startRun();
+        document.getElementById('btn-back-workshop').onclick = () => {
+          gs.shop = Eng.generateShop(gs.runNumber);
+          gs.runNumber++;
+          DrillDown.Game.updateWorkshop();
+        };
+      }
     }
 
     document.getElementById('btn-auto').onclick = () => {
@@ -591,6 +778,7 @@ DrillDown.UI = (() => {
       const last = result.log[result.log.length - 1];
       if (last) {
         document.getElementById('drill-depth').textContent = last.depth || result.maxDepth;
+        document.getElementById('drill-zone').textContent = Eng.zoneFor(last.depth || result.maxDepth || 0).name;
         document.getElementById('drill-hp').textContent = Math.max(0, last.hp || 0);
         document.getElementById('drill-heat').textContent = Math.floor(last.heat || 0) + '%';
         document.getElementById('drill-cargo').textContent = last.cargo || 0;
@@ -629,52 +817,6 @@ DrillDown.UI = (() => {
     if (!cancelled) appendLine();
   }
 
-  function renderResults(result, oreGold) {
-    const gs = DrillDown.Game.state;
-    showScreen('results');
-    const cont = document.getElementById('screen-results');
-
-      const logHtml = result.log && result.log.length > 0 ? result.log.map(e => {
-      let cls = 'log-entry';
-      if (e.text.includes('OVERHEAT') || e.text.includes('FAILED') || e.text.includes('Destroyed')) cls += ' log-danger';
-      else if (e.text.includes('Heat vent') || e.text.includes('attacks')) cls += ' log-warn';
-      else if (e.text.includes('Void Crystal') || e.text.includes('cache')) cls += ' log-rare';
-      else if (e.text.includes('Ore vein')) cls += ' log-loot';
-      else if (e.text.includes('fragment')) cls += ' log-rare';
-      return `<div class="${cls}">${e.text}</div>`;
-    }).join('') : '<div class="log-entry">No log data</div>';
-
-    cont.innerHTML = `
-      <div class="results-left">
-        <h2>⛰ Run Complete</h2>
-        <div class="results-grid">
-          <div class="result-item"><span>Max Depth</span><strong>${result.maxDepth}</strong></div>
-          <div class="result-item"><span>Best Ever</span><strong>${gs.bestDepth}</strong></div>
-          <div class="result-item"><span>Status</span><strong class="${result.surfaced ? 'text-ok' : 'text-fail'}">${result.surfaced ? '⬆ Surfaced' : '❌ Destroyed'}</strong></div>
-          <div class="result-item"><span>Ore Mined</span><strong>${result.ore} (${oreGold}g)</strong></div>
-          <div class="result-item"><span>Fragments</span><strong>${result.foundParts.length}</strong></div>
-          <div class="result-item"><span>Gold Earned</span><strong>${result.gold + oreGold}g</strong></div>
-        </div>
-        <div class="results-buttons">
-          <button class="btn btn-primary" id="btn-relaunch">⬇ Relaunch Drone</button>
-          <button class="btn btn-secondary" id="btn-back-workshop">⬆ Workshop</button>
-        </div>
-      </div>
-      <div class="results-right">
-        <div class="results-right-label">📋 Drill Log (${result.log.length} entries)</div>
-        <div class="results-log">${logHtml}</div>
-      </div>
-    `;
-    document.getElementById('btn-back-workshop').onclick = () => {
-      gs.shop = Eng.generateShop(gs.runNumber);
-      gs.runNumber++;
-      DrillDown.Game.updateWorkshop();
-    };
-    document.getElementById('btn-relaunch').onclick = () => {
-      DrillDown.Game.startRun();
-    };
-  }
-
   function renderHelp() {
     const overlay = document.getElementById('help-overlay');
     overlay.classList.add('active');
@@ -684,7 +826,7 @@ DrillDown.UI = (() => {
       <div class="help-body">
         <div class="help-section">
           <h3>🎯 Goal</h3>
-          <p>Build a drilling robot, send it into the depths, and bring back resources. Each run lets you upgrade your rig to go <strong>deeper</strong>. Deeper = better loot.</p>
+          <p>Build a drilling robot, send it into the depths, and bring back resources. Each run lets you upgrade your rig to go <strong>deeper</strong>. Deeper = richer ore veins and tougher foes. Descend through zones — the Crust, Mantle, Outer/Inner Core — and hit <strong>depth milestones</strong> for one-time gold bonuses, all the way to the Singularity at 500.</p>
         </div>
         <div class="help-section">
           <h3>🔄 Core Loop</h3>
@@ -712,14 +854,26 @@ DrillDown.UI = (() => {
         </div>
         <div class="help-section">
           <h3>🏪 Shop & Economy</h3>
-          <p>Open the shop between runs. <b>Drag a part</b> to buy it — drop on the grid to place, or on your inventory to store.</p>
+          <p>Open the shop between runs. <b>Drag a part</b> to buy it — drop on the grid to place, or on your inventory to store. Drag any part to the <b>Sell Bin</b> for a 50% refund.</p>
           <p>Ore converts to gold automatically. Find rare <b>Void Crystals</b> for bonus gold.</p>
+          <p><b>⚠ You only keep your haul if you surface.</b> If the drone is destroyed, all ore and fragments it was carrying are lost. Set a <b>Return Policy</b> (return when cargo full / emergency ascent at low HP) to bank your loot before it's too late.</p>
         </div>
         <div class="help-section">
           <h3>🔧 Crafting & Fragments</h3>
           <p>Ancient caches drop <b>fragments</b> — collect enough to craft a full part:<br>
           <span style="color:#74b9ff">■ Rare</span> — <b>2 fragments</b> to combine (also available in shop)<br>
           <span style="color:#ff6b6b">■ Unique</span> — <b>3 fragments</b> to combine (craft-only, strongest tier)</p>
+        </div>
+        <div class="help-section">
+          <h3>🔗 Synergies (place parts side-by-side)</h3>
+          <p><b>Cooled Drill</b> — drill next to cooling: <b>+2 cooling, +1 drill</b> each.<br>
+          <b>Drill Gang</b> — drill next to drill: <b>+2 drill</b> each.<br>
+          <b>Radiator Bank</b> — cooling next to cooling: <b>+1 cooling</b> each.<br>
+          <b>Plating Wall</b> — defense next to defense: <b>+3 HP</b> each.<br>
+          <b>Armored Head</b> — defense next to drill: <b>+1 armor</b> each.<br>
+          <b>Conveyor Feed</b> — utility next to drill/cooling: <b>+1 cargo</b> each.<br>
+          <b>Sensor Array</b> — utility next to utility: <b>+3 detect</b> each.<br>
+          <b>◆ Reactor Core</b> — amplifies every adjacent drill/cooling/defense part's main stat (+25%, or +50% for the Singularity Core). Surround it with your best parts.</p>
         </div>
         <div class="help-section">
           <h3>🚀 Pro Tips</h3>
@@ -740,7 +894,10 @@ DrillDown.UI = (() => {
     if (!dragState) return;
     document.removeEventListener('mousemove', onDragMove);
     document.removeEventListener('mouseup', onDragEnd);
+    document.removeEventListener('touchmove', onDragMove);
+    document.removeEventListener('touchend', onDragEnd);
     document.querySelectorAll('.grid-hover-ok, .grid-hover-bad').forEach(el => el.classList.remove('grid-hover-ok', 'grid-hover-bad'));
+    document.getElementById('sell-bin')?.classList.remove('bin-hover');
     if (dragState.ghost) dragState.ghost.remove();
     if (dragState.fromGrid) {
       DrillDown.Game.state.inventory.push(dragState.partId);
@@ -750,7 +907,7 @@ DrillDown.UI = (() => {
   }
 
   return {
-    showScreen, renderTitle, renderWorkshop, renderShop, renderDrill, renderResults,
-    createPartElement, initTooltip, cancelDrag
+    showScreen, renderTitle, renderWorkshop, renderShop, renderDrill,
+    createPartElement, initTooltip, cancelDrag, isDragging
   };
 })();

@@ -105,8 +105,8 @@ DrillDown.Engine = (() => {
       if (def.stats.speed) stats.speed += def.stats.speed;
       if (def.stats.detect) stats.detect += def.stats.detect;
     }
-    // adjacency bonuses
-    const adjacencyBonus = { cooling: 0, hp: 0, cargo: 0 };
+    // -- Adjacency synergies (each unique touching pair scored once) --
+    const adjacencyBonus = { cooling: 0, hp: 0, cargo: 0, drillPower: 0, armor: 0, detect: 0 };
     const visited = new Set();
     for (const pid in grid.placed) {
       const p = grid.placed[pid];
@@ -119,18 +119,42 @@ DrillDown.Engine = (() => {
           if (nid === pid) continue;
           if (visited.has(pid + '|' + nid) || visited.has(nid + '|' + pid)) continue;
           visited.add(pid + '|' + nid);
-          const np = grid.placed[nid];
-          const ndef = P[np.id];
-          if (ndef.type === 'cooling' && def.type === 'drill') adjacencyBonus.cooling += 2;
-          if (ndef.type === 'drill' && def.type === 'cooling') adjacencyBonus.cooling += 2;
-          if (ndef.type === 'defense' && def.type === 'defense') adjacencyBonus.hp += 3;
-          if (ndef.type === 'utility' && (def.type === 'drill' || def.type === 'cooling')) adjacencyBonus.cargo += 1;
+          const ndef = P[grid.placed[nid].id];
+          if (!ndef) continue;
+          const pair = (a, b) => (def.type === a && ndef.type === b) || (def.type === b && ndef.type === a);
+          if (pair('drill', 'cooling')) { adjacencyBonus.cooling += 2; adjacencyBonus.drillPower += 1; } // cooled bit cuts better
+          if (pair('drill', 'drill')) adjacencyBonus.drillPower += 2;                                    // ganged drills
+          if (pair('cooling', 'cooling')) adjacencyBonus.cooling += 1;                                   // radiator bank
+          if (pair('defense', 'defense')) adjacencyBonus.hp += 3;                                        // plating wall
+          if (pair('defense', 'drill')) adjacencyBonus.armor += 1;                                       // armored drill head
+          if (pair('utility', 'drill') || pair('utility', 'cooling')) adjacencyBonus.cargo += 1;         // conveyor feed
+          if (pair('utility', 'utility')) adjacencyBonus.detect += 3;                                    // sensor array
         }
       }
     }
-    stats.cooling += adjacencyBonus.cooling;
-    stats.hp += adjacencyBonus.hp;
-    stats.cargo += adjacencyBonus.cargo;
+    for (const k in adjacencyBonus) stats[k] += adjacencyBonus[k];
+
+    // -- Reactor cores: amplify the primary stat of each orthogonally-adjacent part --
+    const primaryStat = { drill: 'drillPower', cooling: 'cooling', defense: 'hp' };
+    for (const pid in grid.placed) {
+      const p = grid.placed[pid];
+      const def = P[p.id];
+      if (!def || def.type !== 'core') continue;
+      const amp = def.amp || 0.25;
+      const shape = p.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
+      const seen = new Set();
+      for (const [dr, dc] of shape) {
+        for (const nid of getNeighbors(grid, p.row + dr, p.col + dc)) {
+          if (nid === pid || seen.has(nid)) continue;
+          seen.add(nid);
+          const ndef = P[grid.placed[nid].id];
+          if (!ndef) continue;
+          const key = primaryStat[ndef.type];
+          if (key && ndef.stats[key]) stats[key] += Math.round(ndef.stats[key] * amp);
+        }
+      }
+    }
+
     return stats;
   }
 
@@ -155,23 +179,111 @@ DrillDown.Engine = (() => {
       }
     }
     if (roll < 15 + lootChance * 0.3) {
-      const ore = Math.floor(4 + depth * 0.2 + Math.random() * 4);
+      // Deeper veins are richer — the payoff for risking the descent.
+      const ore = Math.floor(4 + depth * 0.35 + Math.random() * 4);
       return { type: 'loot', text: `Ore vein! +${ore} ore`, ore };
     }
-    if (roll < 30 + depth * 0.15) {
-      const enemy = depth < 20 ? 'Rock Worm' : depth < 50 ? 'Crystal Spider' : 'Magma Drake';
-      const damage = Math.floor(3 + depth * 0.15 + Math.random() * 4);
+    if (roll < 30 + depth * 0.2) {
+      const enemy = depth < 25 ? 'Rock Worm' : depth < 75 ? 'Crystal Spider'
+        : depth < 150 ? 'Magma Drake' : depth < 300 ? 'Core Wraith' : 'Void Leviathan';
+      const damage = Math.floor(3 + depth * 0.22 + Math.random() * 4);
       return { type: 'enemy', text: `${enemy} attacks! -${damage} HP`, damage };
     }
     if (roll < 40 + depth * 0.1) {
-      const spike = Math.floor(5 + depth * 0.2);
+      const spike = Math.floor(5 + depth * 0.22);
       return { type: 'hazard', text: `Heat vent! +${spike} heat`, heatSpike: spike };
     }
     return { type: 'nothing', text: 'Nothing unusual.' };
   }
 
+  // -- Zones & milestones (progression) --
+  const ZONES = [
+    { min: 0,   name: 'The Crust' },
+    { min: 25,  name: 'The Mantle' },
+    { min: 75,  name: 'The Lower Mantle' },
+    { min: 150, name: 'The Outer Core' },
+    { min: 300, name: 'The Inner Core' },
+    { min: 500, name: 'The Singularity' }
+  ];
+  function zoneFor(depth) {
+    let z = ZONES[0];
+    for (const zone of ZONES) if (depth >= zone.min) z = zone;
+    return z;
+  }
+  const MILESTONES = [
+    { depth: 25,  reward: 50,   name: 'Broke the Crust' },
+    { depth: 50,  reward: 120,  name: 'Into the Mantle' },
+    { depth: 75,  reward: 200,  name: 'Deep Mantle' },
+    { depth: 100, reward: 350,  name: 'Triple Digits' },
+    { depth: 150, reward: 600,  name: 'Outer Core' },
+    { depth: 200, reward: 900,  name: 'Pressure Cooker' },
+    { depth: 300, reward: 1500, name: 'Inner Core' },
+    { depth: 500, reward: 3000, name: 'Reached the Singularity' }
+  ];
+
+  // -- Synergy analysis for the workshop (mirrors the bonuses in computeStats) --
+  const SYNERGY_DEFS = {
+    'cooling|drill':    { label: 'Cooled Drill',  bonus: '+2❄ +1⬇' },
+    'drill|drill':      { label: 'Drill Gang',    bonus: '+2⬇' },
+    'cooling|cooling':  { label: 'Radiator Bank', bonus: '+1❄' },
+    'defense|defense':  { label: 'Plating Wall',  bonus: '+3❤' },
+    'defense|drill':    { label: 'Armored Head',  bonus: '+1🛡' },
+    'drill|utility':    { label: 'Conveyor Feed', bonus: '+1📦' },
+    'cooling|utility':  { label: 'Conveyor Feed', bonus: '+1📦' },
+    'utility|utility':  { label: 'Sensor Array',  bonus: '+3📡' }
+  };
+  function gridSynergies(grid) {
+    const counts = {};
+    const synergizedPids = new Set();
+    const ampedPids = new Set();
+    const visited = new Set();
+    const bump = (label, bonus) => {
+      if (!counts[label]) counts[label] = { label, bonus, count: 0 };
+      counts[label].count++;
+    };
+    for (const pid in grid.placed) {
+      const p = grid.placed[pid];
+      const def = P[p.id];
+      if (!def) continue;
+      const shape = p.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
+      for (const [dr, dc] of shape) {
+        for (const nid of getNeighbors(grid, p.row + dr, p.col + dc)) {
+          if (nid === pid) continue;
+          if (visited.has(pid + '|' + nid) || visited.has(nid + '|' + pid)) continue;
+          visited.add(pid + '|' + nid);
+          const ndef = P[grid.placed[nid].id];
+          if (!ndef) continue;
+          const sd = SYNERGY_DEFS[[def.type, ndef.type].sort().join('|')];
+          if (sd) { bump(sd.label, sd.bonus); synergizedPids.add(pid); synergizedPids.add(nid); }
+        }
+      }
+    }
+    const primaryStat = { drill: 'drillPower', cooling: 'cooling', defense: 'hp' };
+    for (const pid in grid.placed) {
+      const p = grid.placed[pid];
+      const def = P[p.id];
+      if (!def || def.type !== 'core') continue;
+      const shape = p.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
+      const seen = new Set();
+      let amped = 0;
+      for (const [dr, dc] of shape) {
+        for (const nid of getNeighbors(grid, p.row + dr, p.col + dc)) {
+          if (nid === pid || seen.has(nid)) continue;
+          seen.add(nid);
+          const ndef = P[grid.placed[nid].id];
+          if (!ndef) continue;
+          const key = primaryStat[ndef.type];
+          if (key && ndef.stats[key]) { ampedPids.add(nid); synergizedPids.add(pid); amped++; }
+        }
+      }
+      if (amped > 0) bump(`Reactor Amp +${Math.round((def.amp || 0.25) * 100)}%`, `×${amped}`);
+    }
+    return { synergies: Object.values(counts), synergizedPids, ampedPids };
+  }
+
   // -- Simulation --
-  function simulateRun(robotStats, maxDepth) {
+  function simulateRun(robotStats, maxDepth, policy) {
+    policy = policy || { cargoFull: true, hpPct: 0 };
     const log = [];
     let depth = (maxDepth || 0) + 1;
     let hp = robotStats.hp;
@@ -262,6 +374,17 @@ DrillDown.Engine = (() => {
         }
 
         log.push({ depth, text: entry, hp: Math.max(0, hp), heat, cargo, cumOre: totalOre, cumGold: totalGold });
+
+        // -- Auto-return policy: surface deliberately instead of running to the cap --
+        if (policy.cargoFull && cargo >= cargoMax) {
+          log.push({ depth, text: '📦 Cargo hold full — auto-returning to surface.', hp: Math.max(0, hp), heat: 0, cargo, cumOre: totalOre, cumGold: totalGold });
+          return { depth, hp, heat, cargo, log, ore: totalOre, foundParts, gold: totalGold, maxDepth: depth, surfaced: true };
+        }
+        if (policy.hpPct > 0 && hp <= robotStats.hp * policy.hpPct) {
+          const pct = Math.round((hp / robotStats.hp) * 100);
+          log.push({ depth, text: `⬆ Hull at ${pct}% — emergency ascent.`, hp: Math.max(0, hp), heat: 0, cargo, cumOre: totalOre, cumGold: totalGold });
+          return { depth, hp, heat, cargo, log, ore: totalOre, foundParts, gold: totalGold, maxDepth: depth, surfaced: true };
+        }
       }
 
       return null;
@@ -315,6 +438,8 @@ DrillDown.Engine = (() => {
         grid: state.grid,
         inventory: state.inventory,
         fragments: state.fragments || {},
+        returnPolicy: state.returnPolicy || { cargoFull: true, hpPct: 0 },
+        milestones: state.milestones || [],
         runNumber: state.runNumber,
         lastDepth: state.lastDepth,
         bestDepth: state.bestDepth,
@@ -341,6 +466,7 @@ DrillDown.Engine = (() => {
     createGrid, cloneGrid, canPlace, placePart, removePart, getPartAt, expandGrid,
     computeStats, rockHardness, getEvent, simulateRun,
     generateShop, shopCost,
+    zoneFor, MILESTONES, gridSynergies,
     save, load
   };
 })();

@@ -178,6 +178,161 @@ DrillDown.PARTS = {
     emoji: '📡'
   },
 
+  // -- Drills --
+  twin_bore: {
+    id: 'twin_bore',
+    name: 'Twin Bore',
+    type: 'drill',
+    shape: [[0,0], [1,0]],
+    stats: { drillPower: 9, heatGen: 5 },
+    rarity: 'uncommon',
+    cost: 65,
+    color: '#e67e22',
+    emoji: '⚙'
+  },
+  plasma_cutter: {
+    id: 'plasma_cutter',
+    name: 'Plasma Cutter',
+    type: 'drill',
+    shape: [[0,0], [1,0], [1,1]],
+    stats: { drillPower: 15, heatGen: 9 },
+    rarity: 'uncommon',
+    cost: 115,
+    color: '#e74c3c',
+    emoji: '🔥'
+  },
+  core_borer: {
+    id: 'core_borer',
+    name: 'Core Borer',
+    type: 'drill',
+    shape: [[0,0], [1,0], [2,0]],
+    stats: { drillPower: 22, heatGen: 13 },
+    rarity: 'rare',
+    cost: 200,
+    color: '#e74c3c',
+    emoji: '🔥'
+  },
+
+  // -- Cooling --
+  thermal_paste: {
+    id: 'thermal_paste',
+    name: 'Thermal Paste',
+    type: 'cooling',
+    shape: [[0,0]],
+    stats: { cooling: 2 },
+    rarity: 'common',
+    cost: 12,
+    color: '#74b9ff',
+    emoji: '💧'
+  },
+  heat_sink: {
+    id: 'heat_sink',
+    name: 'Heat Sink',
+    type: 'cooling',
+    shape: [[0,0]],
+    stats: { cooling: 6 },
+    rarity: 'uncommon',
+    cost: 70,
+    color: '#0984e3',
+    emoji: '❄'
+  },
+  vent_array: {
+    id: 'vent_array',
+    name: 'Vent Array',
+    type: 'cooling',
+    shape: [[0,0], [0,1], [0,2]],
+    stats: { cooling: 13 },
+    rarity: 'rare',
+    cost: 170,
+    color: '#0984e3',
+    emoji: '🌊'
+  },
+
+  // -- Defense --
+  deflector: {
+    id: 'deflector',
+    name: 'Deflector',
+    type: 'defense',
+    shape: [[0,0]],
+    stats: { armor: 5 },
+    rarity: 'uncommon',
+    cost: 90,
+    color: '#00b894',
+    emoji: '🛡'
+  },
+  bulwark: {
+    id: 'bulwark',
+    name: 'Bulwark',
+    type: 'defense',
+    shape: [[0,0], [0,1]],
+    stats: { hp: 16, armor: 2 },
+    rarity: 'uncommon',
+    cost: 75,
+    color: '#636e72',
+    emoji: '🧱'
+  },
+  aegis_field: {
+    id: 'aegis_field',
+    name: 'Aegis Field',
+    type: 'defense',
+    shape: [[0,0], [1,0]],
+    stats: { hp: 20, armor: 3 },
+    rarity: 'rare',
+    cost: 150,
+    color: '#00b894',
+    emoji: '✨'
+  },
+
+  // -- Utility --
+  gyro: {
+    id: 'gyro',
+    name: 'Gyro',
+    type: 'utility',
+    shape: [[0,0]],
+    stats: { speed: 0.5 },
+    rarity: 'uncommon',
+    cost: 70,
+    color: '#dfe6e9',
+    emoji: '🔩'
+  },
+  ore_magnet: {
+    id: 'ore_magnet',
+    name: 'Ore Magnet',
+    type: 'utility',
+    shape: [[0,0], [1,0]],
+    stats: { detect: 14, cargo: 4 },
+    rarity: 'uncommon',
+    cost: 85,
+    color: '#a29bfe',
+    emoji: '🧲'
+  },
+  survey_drone: {
+    id: 'survey_drone',
+    name: 'Survey Drone',
+    type: 'utility',
+    shape: [[0,0], [0,1]],
+    stats: { detect: 25, speed: 0.2 },
+    rarity: 'rare',
+    cost: 150,
+    color: '#a29bfe',
+    emoji: '📡'
+  },
+
+  // -- Cores (amplify adjacent parts; no stats of their own) --
+  reactor_core: {
+    id: 'reactor_core',
+    name: 'Reactor Core',
+    type: 'core',
+    shape: [[0,0]],
+    stats: {},
+    amp: 0.25,
+    desc: 'Amplifies adjacent drill / cooling / defense parts by +25%.',
+    rarity: 'rare',
+    cost: 190,
+    color: '#a55eea',
+    emoji: '🔆'
+  },
+
   // -- Unique (craft-only, 3 fragments) --
   mega_drill: {
     id: 'mega_drill',
@@ -233,6 +388,19 @@ DrillDown.PARTS = {
     cost: 0,
     color: '#f368e0',
     emoji: '⚡'
+  },
+  singularity_core: {
+    id: 'singularity_core',
+    name: 'Singularity Core',
+    type: 'core',
+    shape: [[0,0], [0,1], [1,0], [1,1]],
+    stats: {},
+    amp: 0.5,
+    desc: 'Amplifies all adjacent drill / cooling / defense parts by +50%.',
+    rarity: 'unique',
+    cost: 0,
+    color: '#8854d0',
+    emoji: '🌀'
   }
 };
 
