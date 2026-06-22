@@ -241,7 +241,6 @@ body::after {
 .part-card-rarity.rare { color: #74b9ff; }
 .part-card-rarity.unique { color: #ff6b6b; }
 .part-card-cost { font-size: 11px; color: var(--amber); position: relative; }
-.part-card-stats { font-size: 8px; color: var(--phosphor-dim); text-align: center; line-height: 1.3; position: relative; margin-top: 1px; }
 .part-cant-afford { opacity: 0.45; border-color: var(--phosphor-faint) !important; cursor: not-allowed; }
 .part-cant-afford:hover { transform: none; box-shadow: none; }
 .part-count { position: absolute; top: 2px; right: 4px; font-size: 10px; color: var(--phosphor); background: #000000cc; padding: 0 4px; border: 1px solid var(--phosphor-faint); }

@@ -133,13 +133,12 @@ DrillDown.UI = (() => {
     el.dataset.rotated = opts.rotated ? '1' : '0';
     sizeCard(el, def, !!opts.rotated);
 
-    const statsLine = statSummary(def);
+    // Stats are intentionally not shown on the card — hover/hold for the full tooltip.
     el.innerHTML = `
       <div class="part-card-bg" style="background:${def.color}22; border-color:${def.color}"></div>
       <div class="part-card-name">${def.name}</div>
       <div class="part-card-rarity ${def.rarity}">${def.rarity}</div>
       <div class="part-card-cost">${opts.showCost ? def.cost + 'g' : ''}</div>
-      <div class="part-card-stats">${statsLine}</div>
     `;
 
     // Hover tooltip + track the hovered card so R can pre-rotate it before pickup
@@ -201,20 +200,6 @@ DrillDown.UI = (() => {
       case 'core': return 'Surround it with your strongest drill / cooling / defense parts to amplify them.';
       default: return '';
     }
-  }
-
-  function statSummary(def) {
-    const parts = [];
-    if (def.stats.drillPower) parts.push(`⬇${def.stats.drillPower}`);
-    if (def.stats.cooling) parts.push(`❄${def.stats.cooling}`);
-    if (def.stats.hp) parts.push(`❤${def.stats.hp}`);
-    if (def.stats.armor) parts.push(`🛡${def.stats.armor}`);
-    if (def.stats.cargo) parts.push(`📦${def.stats.cargo}`);
-    if (def.stats.speed) parts.push(`⚡${def.stats.speed}`);
-    if (def.stats.detect) parts.push(`📡${def.stats.detect}%`);
-    if (def.stats.heatGen) parts.push(`🌡+${def.stats.heatGen}`);
-    if (def.amp) parts.push(`◆+${Math.round(def.amp * 100)}%`);
-    return parts.join(' ');
   }
 
   const LONG_PRESS_MS = 450;   // hold-to-rotate delay on touch

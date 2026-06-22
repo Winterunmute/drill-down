@@ -42,5 +42,5 @@ Ore converts to gold on run completion (×2, and only if the drone surfaces). Sh
 ## Conventions
 - Pure vanilla JS, no modules/imports — everything via the `DrillDown` global. New code should attach to it the same way.
 - Adding a part = add one entry to `DrillDown.PARTS` in `js/parts.js`. Fields: `id`, `name`, `type` (`drill`/`cooling`/`defense`/`utility`/`core`), `shape`, `stats`, `rarity` (`common`/`uncommon`/`rare`/`unique`), `cost`, `color`, `emoji`. The shop, tooltips, stat summaries, and shape rendering all read from this automatically. `core`-type parts also need an `amp` field (e.g. `0.25`) and a `desc` field; their `stats` can be empty.
-- Stat display order and help text live in `UI.renderWorkshop` (`statHelp`); the per-stat parsing in `computeStats`, `statSummary`, and `showTooltip` must stay in sync when adding a new stat.
+- Stat display order and help text live in `UI.renderWorkshop` (`statHelp`); the per-stat parsing in `computeStats` and `showTooltip` must stay in sync when adding a new stat. (Cards show only name/rarity/cost — full stats are in the hover/hold tooltip.)
 - Run-log lines are styled by substring matching on their text (e.g. `OVERHEAT`, `Void Crystal`, `Ore vein`) in `renderDrill`/`showComplete` — if you change log wording, update those matches.
