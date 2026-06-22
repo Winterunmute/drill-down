@@ -232,6 +232,8 @@ Each unique touching pair is scored once (undirected). In addition to these, **c
 ## Controls
 
 - **Drag** — move parts: inventory→grid, grid→grid, shop→grid/inventory
+- **Placement preview** — while dragging over the grid, the footprint glows **green** where it would drop and **red** when it can't (overlap or off-grid)
+- **Inventory stacking** — identical parts group into one card, shown as a stacked "pile" when you own more than one (no number)
 - **R key** — rotate the part while dragging, or rotate a part card you're hovering in the inventory/shop (pre-orient before pickup)
 - **Long-press (touch)** — rotate the part while dragging (hold finger still)
 - **Double-click** — rotate a placed part (desktop)
@@ -266,7 +268,7 @@ Each unique touching pair is scored once (undirected). In addition to these, **c
 ```
 drill-down/
 ├── index.html      # Shell with 3 screens + 2 overlays
-├── style.css       # All styling (712 lines)
+├── style.css       # All styling (722 lines)
 ├── README.md       # Player & contributor overview
 ├── GAME.md         # This file
 ├── CLAUDE.md       # Dev instructions
@@ -274,6 +276,6 @@ drill-down/
 │   ├── parts.js    # 36 part definitions + rarity colors (430 lines)
 │   ├── engine.js   # Grid, stats, simulation, synergies, recycling, shop, save/migrate (597 lines)
 │   ├── audio.js    # Web Audio API synthesized SFX (94 lines)
-│   ├── ui.js       # All DOM rendering, drag-drop, tooltips, recycle bin (1011 lines)
+│   ├── ui.js       # All DOM rendering, drag-drop, tooltips, recycle bin (998 lines)
 │   └── main.js     # State management, init, keyboard shortcuts (95 lines)
 ```
