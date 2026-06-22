@@ -839,7 +839,7 @@ DrillDown.UI = (() => {
         <span>Depth: <strong id="drill-depth">0</strong></span>
         <span>Zone: <strong id="drill-zone">The Crust</strong></span>
         <span>❤ HP: <strong id="drill-hp">0</strong>/<strong id="drill-hp-max">0</strong></span>
-        <span>🌡 Heat: <strong id="drill-heat">0</strong></span>
+        <span>🌡 Heat: <strong id="drill-heat">0</strong>/40
         <span>📦 <strong id="drill-cargo">0</strong>/<strong id="drill-cargo-max">0</strong></span>
       </div>
       <div id="dig-view" class="digging">
@@ -889,7 +889,7 @@ DrillDown.UI = (() => {
       document.getElementById('drill-zone').textContent = Eng.zoneFor(entry.depth || 0).name;
       document.getElementById('drill-hp').textContent = Math.max(0, entry.hp || 0);
       document.getElementById('drill-hp-max').textContent = stats.hp;
-      document.getElementById('drill-heat').textContent = Math.floor(entry.heat || 0) + '%';
+      document.getElementById('drill-heat').textContent = Math.floor(entry.heat || 0);
       document.getElementById('drill-cargo').textContent = entry.cargo || 0;
       document.getElementById('drill-cargo-max').textContent = Math.floor(stats.cargo);
 
@@ -1006,7 +1006,7 @@ DrillDown.UI = (() => {
         document.getElementById('drill-depth').textContent = last.depth || result.maxDepth;
         document.getElementById('drill-zone').textContent = Eng.zoneFor(last.depth || result.maxDepth || 0).name;
         document.getElementById('drill-hp').textContent = Math.max(0, last.hp || 0);
-        document.getElementById('drill-heat').textContent = Math.floor(last.heat || 0) + '%';
+        document.getElementById('drill-heat').textContent = Math.floor(last.heat || 0);
         document.getElementById('drill-cargo').textContent = last.cargo || 0;
       }
       finishRun(result, stats);

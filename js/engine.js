@@ -211,7 +211,10 @@ DrillDown.Engine = (() => {
   // cheapest when full) is what lets a long run accumulate the rare expensive finds.
   function commodityForDepth(depth) {
     const available = COMMODITIES.filter(c => depth >= c.minDepth);
-    const idx = Math.floor(Math.pow(Math.random(), 2.5) * available.length);
+    // Exponent > 1 biases toward the cheaper (earlier) entries; lower = richer deep
+    // runs. 1.8 keeps iron the most common while letting pricey goods show up often
+    // enough that pushing deep feels rewarding.
+    const idx = Math.floor(Math.pow(Math.random(), 1.8) * available.length);
     return available[Math.min(idx, available.length - 1)];
   }
 
@@ -420,7 +423,7 @@ DrillDown.Engine = (() => {
             return { depth, hp: 0, heat, cargo, log, foundParts, gold: totalGold, maxDepth: depth, surfaced: false };
           }
         } else if (heat > 25) {
-          entry += `🌡 Heat ${heat.toFixed(0)}%. `;
+          entry += `🌡 Heat ${heat.toFixed(0)}/40. `;
         }
 
         if (cargo.length >= cargoMax) {
