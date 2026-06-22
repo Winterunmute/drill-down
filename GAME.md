@@ -257,6 +257,7 @@ Each unique touching pair is scored once (undirected). In addition to these, **c
   - `DrillDown.Game` — controller (main.js)
 - Load order: `parts.js → engine.js → audio.js → ui.js → main.js`
 - Save/load via `localStorage` key `drill_down_save`; mute state via `drill_down_muted`
+- Saves are **versioned** (`SAVE_VERSION`): `Engine.load` runs `Engine.migrate` to fill missing fields with defaults and drop references to removed parts, so older saves keep working as the game evolves
 
 ---
 
@@ -271,8 +272,8 @@ drill-down/
 ├── CLAUDE.md       # Dev instructions
 ├── js/
 │   ├── parts.js    # 36 part definitions + rarity colors (430 lines)
-│   ├── engine.js   # Grid, stats, simulation, synergies, recycling, shop, save/load (543 lines)
+│   ├── engine.js   # Grid, stats, simulation, synergies, recycling, shop, save/migrate (597 lines)
 │   ├── audio.js    # Web Audio API synthesized SFX (94 lines)
-│   ├── ui.js       # All DOM rendering, drag-drop, tooltips, recycle bin (1010 lines)
+│   ├── ui.js       # All DOM rendering, drag-drop, tooltips, recycle bin (1011 lines)
 │   └── main.js     # State management, init, keyboard shortcuts (95 lines)
 ```

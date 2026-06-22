@@ -499,10 +499,18 @@ DrillDown.Engine = (() => {
     return P[partId].cost;
   }
 
-  // -- Save --
+  // -- Save / load / migration --
+  // Bump SAVE_VERSION whenever the persisted state shape changes. `migrate` then
+  // normalizes any older (or current) save up to this shape, so adding a new field
+  // never breaks an existing player's save. Keep the field defaults below in sync
+  // with defaultState() in main.js.
+  const SAVE_VERSION = 2;
+  const SAVE_KEY = 'drill_down_save';
+
   function save(state) {
     try {
       const data = {
+        version: SAVE_VERSION,
         gold: state.gold,
         grid: state.grid,
         inventory: state.inventory,
@@ -510,24 +518,70 @@ DrillDown.Engine = (() => {
         recycleProgress: state.recycleProgress || 0,
         returnPolicy: state.returnPolicy || { cargoFull: true, hpPct: 0.25 },
         milestones: state.milestones || [],
+        shop: state.shop || [],
         runNumber: state.runNumber,
         lastDepth: state.lastDepth,
         bestDepth: state.bestDepth,
         highScore: state.highScore,
         totalRuns: state.totalRuns
       };
-      localStorage.setItem('drill_down_save', JSON.stringify(data));
+      localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch(e) {
       console.warn('Save failed:', e);
     }
   }
 
+  // Fill missing/invalid fields with safe defaults and stamp the current version.
+  // Idempotent: running it on an already-current save is a no-op beyond the stamp.
+  function migrate(data) {
+    if (!data || typeof data !== 'object') return null;
+
+    if (!data.grid || !Array.isArray(data.grid.cells) || !data.grid.placed) data.grid = createGrid(3, 4);
+    if (!Array.isArray(data.inventory)) data.inventory = [];
+    if (!data.fragments || typeof data.fragments !== 'object') data.fragments = {};
+    if (typeof data.recycleProgress !== 'number' || isNaN(data.recycleProgress)) data.recycleProgress = 0;
+    if (!data.returnPolicy || typeof data.returnPolicy !== 'object') {
+      data.returnPolicy = { cargoFull: true, hpPct: 0.25 };
+    } else {
+      if (typeof data.returnPolicy.cargoFull !== 'boolean') data.returnPolicy.cargoFull = true;
+      if (typeof data.returnPolicy.hpPct !== 'number') data.returnPolicy.hpPct = 0.25;
+    }
+    if (!Array.isArray(data.milestones)) data.milestones = [];
+    if (typeof data.gold !== 'number' || isNaN(data.gold)) data.gold = 0;
+    if (typeof data.runNumber !== 'number') data.runNumber = 1;
+    if (typeof data.lastDepth !== 'number') data.lastDepth = 0;
+    if (typeof data.bestDepth !== 'number') data.bestDepth = 0;
+    if (typeof data.totalRuns !== 'number') data.totalRuns = 0;
+    if (typeof data.highScore !== 'number') data.highScore = 0;
+    // Shop wasn't persisted before v2 — generate one so the shop never opens empty/undefined.
+    if (!Array.isArray(data.shop)) data.shop = generateShop(data.runNumber);
+
+    // Drop anything referencing a part id that no longer exists in PARTS.
+    data.inventory = data.inventory.filter(id => P[id]);
+    data.shop = data.shop.filter(id => P[id]);
+    for (const id of Object.keys(data.fragments)) if (!P[id]) delete data.fragments[id];
+    for (const pid of Object.keys(data.grid.placed)) {
+      const p = data.grid.placed[pid];
+      if (!p || !P[p.id]) {
+        delete data.grid.placed[pid];
+        const cells = data.grid.cells;
+        for (let r = 0; r < cells.length; r++)
+          for (let c = 0; c < cells[r].length; c++)
+            if (cells[r][c] === pid) cells[r][c] = null;
+      }
+    }
+
+    data.version = SAVE_VERSION;
+    return data;
+  }
+
   function load() {
     try {
-      const raw = localStorage.getItem('drill_down_save');
+      const raw = localStorage.getItem(SAVE_KEY);
       if (!raw) return null;
-      return JSON.parse(raw);
+      return migrate(JSON.parse(raw));
     } catch(e) {
+      console.warn('Load failed:', e);
       return null;
     }
   }
@@ -538,6 +592,6 @@ DrillDown.Engine = (() => {
     generateShop, shopCost,
     addFragment, recyclePart, RECYCLE_GOLD, RECYCLE_PROGRESS,
     zoneFor, MILESTONES, gridSynergies,
-    save, load
+    save, load, migrate, SAVE_VERSION
   };
 })();
