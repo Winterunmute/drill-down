@@ -631,6 +631,9 @@ DrillDown.Engine = (() => {
   // the shop at extreme depths — a gold shortcut around the fragment grind.
   const SHOP_UNIQUE_PRICE = 600;
 
+  // Cost to reroll (restock) the shop without doing a run.
+  const REROLL_COST = 25;
+
   // Shop stock scales with how deep you've reached: the deeper your best run, the more
   // the mix shifts from commons toward rares, and at extreme depths a single premium
   // unique slot opens up. Returns the slot counts per rarity for a given best depth.
@@ -693,7 +696,8 @@ DrillDown.Engine = (() => {
         lastDepth: state.lastDepth,
         bestDepth: state.bestDepth,
         highScore: state.highScore,
-        totalRuns: state.totalRuns
+        totalRuns: state.totalRuns,
+        streak: state.streak
       };
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch(e) {
@@ -722,6 +726,7 @@ DrillDown.Engine = (() => {
     if (typeof data.lastDepth !== 'number') data.lastDepth = 0;
     if (typeof data.bestDepth !== 'number') data.bestDepth = 0;
     if (typeof data.totalRuns !== 'number') data.totalRuns = 0;
+    if (typeof data.streak !== 'number' || isNaN(data.streak)) data.streak = 0;
     if (typeof data.highScore !== 'number') data.highScore = 0;
     // Shop wasn't persisted before v2 — generate one so the shop never opens empty/undefined.
     if (!Array.isArray(data.shop)) data.shop = generateShop(data.runNumber, data.bestDepth);
@@ -759,7 +764,7 @@ DrillDown.Engine = (() => {
   return {
     createGrid, cloneGrid, canPlace, placePart, removePart, getPartAt, expandGrid,
     computeStats, rockHardness, getEvent, simulateRun,
-    generateShop, shopCost, shopPlan,
+    generateShop, shopCost, shopPlan, REROLL_COST,
     addFragment, recyclePart, RECYCLE_GOLD, RECYCLE_PROGRESS,
     upgradeCost, canUpgrade, upgradePart, planUpgrade,
     zoneFor, MILESTONES, gridSynergies,

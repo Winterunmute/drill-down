@@ -18,7 +18,8 @@ DrillDown.Game = (() => {
       lastDepth: 0,
       bestDepth: 0,
       totalRuns: 0,
-      highScore: 0
+      highScore: 0,
+      streak: 0
     };
   }
 

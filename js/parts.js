@@ -334,6 +334,19 @@ DrillDown.PARTS = {
   },
 
   // -- Cores (amplify adjacent parts; no stats of their own) --
+  flux_node: {
+    id: 'flux_node',
+    name: 'Flux Node',
+    type: 'core',
+    shape: [[0,0]],
+    stats: {},
+    amp: 0.15,
+    desc: 'Amplifies adjacent drill / cooling / defense parts by +15%. Cheap and compact — a starter core.',
+    rarity: 'uncommon',
+    cost: 110,
+    color: '#9b59b6',
+    emoji: '🔮'
+  },
   reactor_core: {
     id: 'reactor_core',
     name: 'Reactor Core',

@@ -858,6 +858,7 @@ DrillDown.UI = (() => {
       <div class="stat-row gold-row"><span class="stat-label">💰 Gold</span><span class="stat-val">${gs.gold}</span></div>
       <div class="stat-row"><span class="stat-label">🏆 Best Depth</span><span class="stat-val">${gs.bestDepth || 0}</span></div>
       <div class="stat-row"><span class="stat-label">🎯 Run</span><span class="stat-val">#${gs.runNumber}</span></div>
+      <div class="stat-row" title="Consecutive safe returns. Each stacks +10% haul gold (max +100%); a destroyed drone resets it."><span class="stat-label">🔥 Streak</span><span class="stat-val">${gs.streak || 0}${(gs.streak || 0) > 0 ? ` · ×${(1 + Math.min(gs.streak, 10) * 0.1).toFixed(1)}` : ''}</span></div>
       ${syn.synergies.length ? `
       <div class="stat-divider"></div>
       <div class="synergy-section">
@@ -914,11 +915,13 @@ DrillDown.UI = (() => {
     const stockNote = plan.unique
       ? `Stock tier: <strong style="color:#74b9ff">${plan.name}</strong> — premium uniques in stock`
       : `Stock tier: <strong style="color:#74b9ff">${plan.name}</strong> — drill deeper for rarer stock`;
+    const rerollCost = Eng.REROLL_COST;
     cont.innerHTML = `<h2>🏪 Parts Shop</h2>
       <div style="margin-bottom:6px;color:#888;font-size:13px;">💰 Gold: <strong style="color:#f5a623">${gs.gold}g</strong> — Drag a part to buy it</div>
       <div style="margin-bottom:12px;color:#666;font-size:12px;">${stockNote}</div>
       <div class="shop-items"></div>
-      <div style="margin-top:14px;">
+      <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-secondary" id="btn-shop-reroll" title="Restock the shop with a fresh selection"${gs.gold < rerollCost ? ' disabled' : ''}>🔄 Reroll (${rerollCost}g)</button>
         <button class="btn btn-secondary" id="btn-shop-close">Close</button>
       </div>
     `;
@@ -934,6 +937,16 @@ DrillDown.UI = (() => {
         if (el) itemsDiv.appendChild(el);
       });
     }
+
+    const rerollBtn = document.getElementById('btn-shop-reroll');
+    if (rerollBtn) rerollBtn.onclick = () => {
+      if (gs.gold < rerollCost) return;
+      gs.gold -= rerollCost;
+      gs.shop = Eng.generateShop(gs.runNumber, gs.bestDepth);
+      A?.tick?.();
+      Eng.save(gs);
+      renderShop();
+    };
 
     document.getElementById('btn-shop-close').onclick = () => {
       overlay.classList.remove('active');
@@ -953,7 +966,7 @@ DrillDown.UI = (() => {
         <span>Depth: <strong id="drill-depth">0</strong></span>
         <span>Zone: <strong id="drill-zone">The Crust</strong></span>
         <span>❤ HP: <strong id="drill-hp">0</strong>/<strong id="drill-hp-max">0</strong></span>
-        <span>🌡 Heat: <strong id="drill-heat">0</strong>/40
+        <span>🌡 Heat: <strong id="drill-heat">0</strong>/40</span>
         <span>📦 <strong id="drill-cargo">0</strong>/<strong id="drill-cargo-max">0</strong></span>
       </div>
       <div id="dig-view" class="digging">
@@ -1022,7 +1035,13 @@ DrillDown.UI = (() => {
       const cargoArr = runResult.cargo || [];
       const oreGold = survived ? Eng.cargoValue(cargoArr) : 0;
       const bonusGold = survived ? runResult.gold : 0;
-      gs.gold += bonusGold + oreGold;
+      // Run-streak bonus: consecutive safe returns stack a haul-gold multiplier (+10%
+      // each, capped at +100%); a destroyed drone resets the streak.
+      const streakBefore = gs.streak || 0;
+      const streakMult = survived ? (1 + Math.min(streakBefore, 10) * 0.1) : 1;
+      const haulGold = Math.round((bonusGold + oreGold) * streakMult);
+      gs.gold += haulGold;
+      gs.streak = survived ? streakBefore + 1 : 0;
       if (!gs.fragments) gs.fragments = {};
       if (survived) {
         // Process fragments — auto-crafts at 2 (rare) / 3 (unique)
@@ -1043,14 +1062,15 @@ DrillDown.UI = (() => {
       }
 
       Eng.save(gs);
-      setTimeout(() => showComplete(runResult, oreGold, bonusGold, newMilestones), 400);
+      setTimeout(() => showComplete(runResult, oreGold, bonusGold, newMilestones, { mult: streakMult, haulGold, streakAfter: gs.streak }), 400);
     }
 
     // Render the run summary in place — keeps the full log on screen (no separate results page)
-    function showComplete(runResult, oreGold, bonusGold, newMilestones) {
+    function showComplete(runResult, oreGold, bonusGold, newMilestones, streakInfo) {
+      streakInfo = streakInfo || { mult: 1, haulGold: bonusGold + oreGold, streakAfter: gs.streak || 0 };
       const survived = runResult.surfaced;
       const milestoneGold = (newMilestones || []).reduce((s, m) => s + m.reward, 0);
-      const totalGold = bonusGold + oreGold + milestoneGold;
+      const totalGold = streakInfo.haulGold + milestoneGold;
       const newBest = runResult.maxDepth >= (gs.bestDepth || 0);
       const zone = Eng.zoneFor(runResult.maxDepth);
       const cargoArr = runResult.cargo || [];
@@ -1081,6 +1101,7 @@ DrillDown.UI = (() => {
             <span class="rc-chip"><label>Cargo (${cargoArr.length} slots)</label><b class="${survived ? '' : 'text-fail'}" style="font-size:14px">${survived ? cargoHtml : 'lost'}</b></span>
             <span class="rc-chip"><label>Haul Value</label><b class="${survived ? 'gold' : 'text-fail'}">${survived ? `+${oreGold}g` : 'lost'}</b></span>
             <span class="rc-chip"><label>Fragments</label><b class="${survived ? '' : 'text-fail'}">${runResult.foundParts.length}${survived ? '' : ' (lost)'}</b></span>
+            <span class="rc-chip"><label>Streak</label><b class="${survived ? '' : 'text-fail'}">${survived ? `🔥 ${streakInfo.streakAfter}${streakInfo.mult > 1 ? ` · ×${streakInfo.mult.toFixed(1)}` : ''}` : 'reset'}</b></span>
             <span class="rc-chip"><label>Gold Earned</label><b class="gold">+${totalGold}g</b></span>
           </div>
           ${mileHtml}`;

@@ -124,6 +124,8 @@ body::after {
 .btn-secondary { border-color: var(--phosphor-faint); color: var(--phosphor-dim); }
 .btn-secondary:hover { border-color: var(--phosphor); color: var(--phosphor); background: rgba(57, 255, 20, 0.05); }
 .btn-small { padding: 6px 14px; font-size: 13px; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:disabled:hover { color: var(--phosphor-dim); border-color: var(--phosphor-faint); box-shadow: none; background: transparent; }
 .launch-btn { margin-top: 16px; font-size: 18px; padding: 14px 40px; letter-spacing: 3px; }
 .shop-btn { margin-top: 12px; width: 100%; }
 
