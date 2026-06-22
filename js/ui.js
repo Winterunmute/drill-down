@@ -17,6 +17,10 @@ DrillDown.UI = (() => {
   let dragState = null;
   let tooltipEl = null;
   let hoveredCard = null;
+  let selected = null;          // tap-to-place: { partId, rotated } currently armed for placement
+
+  const TAP_TIME = 250;         // ms — a press shorter than this with no drift counts as a tap
+  const TAP_MOVE = 10;          // px of drift allowed before a press becomes a drag (not a tap)
 
   // Lightweight transient notification (recycle results, etc.)
   function toast(msg, kind) {
@@ -256,7 +260,7 @@ DrillDown.UI = (() => {
     document.body.appendChild(ghost);
 
     const isTouch = e.type === 'touchstart' || e.type === 'touchmove';
-    dragState = { partId, rotated, ghost, fromGrid: !!pid, pid, partDef: def, fromShop: !!fromShop, isTouch, lastPt: pt };
+    dragState = { partId, rotated, ghost, fromGrid: !!pid, pid, partDef: def, fromShop: !!fromShop, isTouch, lastPt: pt, startPt: pt, startTime: Date.now(), moved: false };
     sizeGhost();
     if (isTouch) armLongPress(pt);
 
@@ -334,6 +338,12 @@ DrillDown.UI = (() => {
     dragState.ghost.style.left = (pt.clientX - 30) + 'px';
     dragState.ghost.style.top = (pt.clientY - 30) + 'px';
 
+    // Drift past the tap tolerance means the user is dragging, not tapping-to-select.
+    if (!dragState.moved && dragState.startPt) {
+      const d = Math.hypot(pt.clientX - dragState.startPt.clientX, pt.clientY - dragState.startPt.clientY);
+      if (d > TAP_MOVE) dragState.moved = true;
+    }
+
     // On touch, drifting away from the anchor means this is a drag, not a hold —
     // re-arm the rotate timer so it only fires after the finger settles again.
     if (dragState.isTouch && dragState.lpAnchor) {
@@ -351,6 +361,21 @@ DrillDown.UI = (() => {
     document.removeEventListener('touchend', onDragEnd);
     if (!dragState) return;
     if (dragState.longPressTimer) clearTimeout(dragState.longPressTimer);
+
+    // Quick tap (no drift) on an inventory part → arm it for tap-to-place instead of
+    // dragging. Far more reliable than drag on a touchscreen. (Grid/shop parts keep drag.)
+    if (!dragState.moved && (Date.now() - dragState.startTime) < TAP_TIME && !dragState.fromGrid && !dragState.fromShop) {
+      const tappedId = dragState.partId, tappedRot = dragState.rotated;
+      dragState.ghost.remove();
+      document.querySelectorAll('.grid-hover-ok, .grid-hover-bad').forEach(el => el.classList.remove('grid-hover-ok', 'grid-hover-bad'));
+      document.getElementById('recycle-bin')?.classList.remove('bin-hover');
+      dragState = null;
+      selectPart(tappedId, tappedRot);
+      return;
+    }
+    // Any real drag cancels a pending tap-to-place selection.
+    if (selected) clearSelection();
+
     const gs = DrillDown.Game.state;
     const gridEl = document.getElementById('grid-container');
     const pt = e ? evtPoint(e) : null;
@@ -459,6 +484,73 @@ DrillDown.UI = (() => {
   }
 
   function onDragEnd(e) { endDrag(e); }
+
+  // -- Tap-to-place (touch-friendly placement) --
+  // Tap a part to arm it, then tap a grid cell to drop it (or the recycle bin to scrap
+  // it). A floating banner offers rotate / cancel. Coexists with drag — a drag clears it.
+  function selectPart(partId, rotated) {
+    if (!DrillDown.Game.state.inventory.includes(partId)) return;
+    if (selected && selected.partId === partId) { clearSelection(); return; }  // re-tap toggles off
+    selected = { partId, rotated: !!rotated };
+    A?.tick?.();
+    showPlacementUI();
+  }
+
+  function clearSelection() {
+    selected = null;
+    document.getElementById('place-banner')?.remove();
+    document.querySelectorAll('.part-card.tap-selected').forEach(el => el.classList.remove('tap-selected'));
+  }
+
+  function showPlacementUI() {
+    document.querySelectorAll('.part-card.tap-selected').forEach(el => el.classList.remove('tap-selected'));
+    if (!selected) return;
+    document.querySelectorAll(`.part-card[data-part-id="${selected.partId}"]`).forEach(el => el.classList.add('tap-selected'));
+    let b = document.getElementById('place-banner');
+    if (!b) { b = document.createElement('div'); b.id = 'place-banner'; document.body.appendChild(b); }
+    const def = P[selected.partId];
+    b.innerHTML = `<span class="pb-text">Placing <b>${def.name}</b>${selected.rotated ? ' ⟳' : ''} — tap a cell</span>
+      <button class="btn btn-small btn-secondary" id="pb-rotate">⟳</button>
+      <button class="btn btn-small btn-secondary" id="pb-cancel">✕</button>`;
+    b.querySelector('#pb-rotate').onclick = () => { selected.rotated = !selected.rotated; A?.tick?.(); showPlacementUI(); };
+    b.querySelector('#pb-cancel').onclick = () => clearSelection();
+  }
+
+  // Attempt to drop the armed part at (row,col). Returns true on success.
+  function tryPlaceSelected(row, col) {
+    if (!selected) return false;
+    const gs = DrillDown.Game.state;
+    if (!Eng.canPlace(gs.grid, selected.partId, row, col, selected.rotated)) { A?.tick?.(); return false; }
+    const idx = gs.inventory.indexOf(selected.partId);
+    if (idx < 0) { clearSelection(); return false; }
+    gs.inventory.splice(idx, 1);
+    Eng.placePart(gs.grid, selected.partId, row, col, selected.rotated);
+    A?.tick?.();
+    clearSelection();
+    Eng.save(gs);
+    DrillDown.Game.updateWorkshop();
+    return true;
+  }
+
+  // Recycle the armed part (tap the recycle bin while a part is selected).
+  function recycleSelected() {
+    if (!selected) return;
+    const gs = DrillDown.Game.state;
+    const id = selected.partId;
+    const idx = gs.inventory.indexOf(id);
+    if (idx < 0) { clearSelection(); return; }
+    gs.inventory.splice(idx, 1);
+    clearSelection();
+    const r = Eng.recyclePart(gs, id);
+    toast(`♻ Recycled <b>${P[id]?.name || 'part'}</b> · <span class="gold">+${r.gold}g</span> · salvage ${Math.round(r.progress)}%`, 'loot');
+    if (r.awardedPartId) {
+      const awName = P[r.awardedPartId]?.name || 'part';
+      if (r.crafted) toast(`✦ Salvage complete — crafted <b>${awName}</b>!`, 'rare');
+      else toast(`✦ Salvage complete — <b>${awName}</b> fragment (${r.fragNow}/${r.fragNeeded})`, 'rare');
+      A?.loot?.();
+    }
+    DrillDown.Game.updateWorkshop();
+  }
 
   function renderWorkshop() {
     const gs = DrillDown.Game.state;
@@ -582,14 +674,28 @@ DrillDown.UI = (() => {
         <div class="recycle-meter"><div class="recycle-meter-fill" style="width:${recPct}%"></div></div>
         <div class="recycle-meter-label">Salvage ${recPct}% → rare/unique fragment</div>
       </div>`);
+    // Tap-to-place: tapping the bin scraps the armed part (parallels drag-to-recycle).
+    document.getElementById('recycle-bin')?.addEventListener('click', () => { if (selected) recycleSelected(); });
 
     const grid = gs.grid;
+    const stats = Eng.computeStats(grid);
     const totalW = grid.cols * (CELL + GAP) - GAP;
     const totalH = grid.rows * (CELL + GAP) - GAP;
     const expandCost = 100 + (grid.rows - 3) * 50 + (grid.cols - 4) * 50;
     const maxSize = grid.rows >= 8 && grid.cols >= 8;
 
     const hasPlaced = Object.keys(grid.placed).length > 0;
+    // Compact glanceable HUD shown under the rig on mobile (hidden on desktop via CSS).
+    const hud = `<div class="rig-hud">
+        <span title="Drill">⛏ ${stats.drillPower}</span>
+        <span title="Heat/step">🌡 ${stats.heatGen}</span>
+        <span title="Cooling">❄ ${stats.cooling}</span>
+        <span title="HP">❤ ${stats.hp}</span>
+        <span title="Armor">🛡 ${stats.armor}</span>
+        <span title="Cargo">📦 ${stats.cargo}</span>
+        <span title="Speed">⚡ ${stats.speed.toFixed(1)}</span>
+        <span title="Detect">📡 ${stats.detect}</span>
+      </div>`;
     center.innerHTML = `
       <div class="grid-header">
         <span>Rig — ${grid.rows}x${grid.cols}</span>
@@ -600,6 +706,7 @@ DrillDown.UI = (() => {
       </div>
       <div id="grid-container" style="width:${totalW}px;height:${totalH}px;position:relative;" data-rows="${grid.rows}" data-cols="${grid.cols}">
       </div>
+      ${hud}
       <button class="btn btn-primary launch-btn" id="btn-launch">⬇ LAUNCH DRILL</button>
     `;
     const gridCont = document.getElementById('grid-container');
@@ -613,6 +720,8 @@ DrillDown.UI = (() => {
         cell.style.top = r * (CELL + GAP) + 'px';
         cell.style.width = CELL + 'px';
         cell.style.height = CELL + 'px';
+        // Tap-to-place drop target (no-op unless a part is armed).
+        cell.addEventListener('click', () => { if (selected) tryPlaceSelected(r, c); });
         gridCont.appendChild(cell);
       }
     }
@@ -719,7 +828,6 @@ DrillDown.UI = (() => {
 
     document.getElementById('btn-launch').onclick = () => DrillDown.Game.startRun();
 
-    const stats = Eng.computeStats(grid);
     const statHelp = {
       '⬇ Drill': 'Overcomes rock hardness. Higher = less heat penalty from dense rock. Diminishing returns once very high — stacking more drill keeps helping, but less each time.',
       '🌡 Heat Gen': 'Heat produced each depth step. Adds up fast — keep it cool! (Not capped — big drills really do run hot.)',
@@ -789,6 +897,12 @@ DrillDown.UI = (() => {
     if (polCargo) polCargo.onchange = (e) => { gs.returnPolicy.cargoFull = e.target.checked; Eng.save(gs); };
     const polHp = document.getElementById('pol-hp');
     if (polHp) polHp.onchange = (e) => { gs.returnPolicy.hpPct = parseFloat(e.target.value); Eng.save(gs); };
+
+    // Re-apply the tap-to-place highlight/banner if a part is still armed after a re-render.
+    if (selected) {
+      if (DrillDown.Game.state.inventory.includes(selected.partId)) showPlacementUI();
+      else clearSelection();
+    }
   }
 
   function renderShop() {
@@ -1128,6 +1242,7 @@ DrillDown.UI = (() => {
   }
 
   function cancelDrag() {
+    if (selected) clearSelection();
     if (!dragState) return;
     if (dragState.longPressTimer) clearTimeout(dragState.longPressTimer);
     document.removeEventListener('mousemove', onDragMove);

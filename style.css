@@ -797,6 +797,23 @@ body::after {
   .dig-strata, .dig-glow, .dig-bit { animation: none; }
 }
 
+/* Compact rig HUD — glanceable stats under the grid (mobile only; shown via media query) */
+.rig-hud { display: none; flex-wrap: wrap; gap: 5px 14px; justify-content: center; margin: 8px 0 2px; font-size: 13px; color: var(--phosphor-dim); }
+.rig-hud span { white-space: nowrap; }
+.rig-hud span:first-child { color: var(--amber); }
+
+/* Tap-to-place: the armed part card + the floating placement banner */
+.part-card.tap-selected { box-shadow: 0 0 0 2px var(--amber), var(--glow); }
+#place-banner {
+  position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+  z-index: 1000; display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px 7px 14px; max-width: calc(100vw - 20px);
+  background: var(--bg-panel); border: 1px solid var(--amber); box-shadow: var(--glow);
+  font-size: 13px;
+}
+#place-banner .pb-text { color: var(--phosphor); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#place-banner b { color: var(--amber); }
+
 /* Responsive */
 @media (max-width: 800px) {
   /* Stack the three panels and let the whole workshop scroll as one column,
@@ -805,6 +822,7 @@ body::after {
   #screen-workshop {
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;             /* exclude mobile browser chrome where supported */
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     gap: 10px;
@@ -818,5 +836,41 @@ body::after {
   .left-scroll { flex: 0 0 auto; overflow: visible; min-height: 0; }
   /* Rig first so it's the first thing you see; parts + stats scroll below it. */
   #workshop-center { order: -1; flex: 0 0 auto; min-height: 0; justify-content: flex-start; padding: 4px 0; }
+  .rig-hud { display: flex; }
   .title-logo { font-size: 44px; }
+
+  /* Parts as a horizontal swipe-strip of compact cards (type labels kept as inline
+     dividers between groups) instead of a tall vertical list. */
+  .inventory-grid { flex-wrap: nowrap; overflow-x: auto; align-items: center; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
+  .inventory-grid > * { flex: 0 0 auto; }
+  .inv-type-head {
+    flex-basis: auto; width: auto; margin: 0; padding: 0 4px; align-self: center;
+    border-bottom: none; border-left: 1px solid var(--phosphor-faint);
+    font-size: 9px; color: var(--phosphor-faint); white-space: nowrap;
+  }
+  .inv-type-head:first-child { border-left: none; }
+
+  /* Slim down the recycle bin so it reclaims vertical space (still a drop / tap target). */
+  #recycle-bin { padding: 6px 10px; margin-top: 8px; }
+  .recycle-bin-hint { display: none; }
+  .recycle-meter-label { font-size: 9px; }
+
+  /* Drill screen: make it scrollable and pin the controls so the run-complete
+     Relaunch / Workshop buttons are never pushed off the bottom of the viewport. */
+  #screen-drill {
+    height: 100vh;
+    height: 100dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .drill-status { flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+  .drill-log { flex: 1 1 auto; min-height: 120px; }
+  .drill-controls {
+    position: sticky;
+    bottom: 0;
+    background: var(--bg);
+    padding: 10px 8px calc(10px + env(safe-area-inset-bottom));
+    flex-wrap: wrap;
+    z-index: 5;
+  }
 }
