@@ -29,13 +29,13 @@ Ideas you specifically asked to add:
 
 ## Gameplay & Content
 
-- **More core-type parts** — only 2 cores exist (Reactor, Singularity); a mid-tier uncommon/rare core with a smaller amp or secondary effect would fill out the type.
+- ✅ **More core-type parts (DONE)** — added Flux Node (uncommon core, +15% amp) bridging the rare Reactor (+25%) and unique Singularity (+50%); auto-generates Mk tiers like any non-unique part.
 - **Part trade-offs (negative stats)** — the code has clamp floors (`stats.speed = Math.max(0.3, stats.speed)`) and the help screen mentions trade-offs, but no part currently has negative stats. A "Heavy Chassis" with +HP/−speed or "Overclocked Drill" with +drill/+heatGen would make choices more interesting.
 - **More random events** — the event pool (crystal, cache, ore, enemy, vent, nothing) feels thin at depth. Geyser (forced ascent?), magma current (bonus speed for a few steps?), abandoned rig (free part?) would add variety.
 - **Depth-unique encounters** — boss enemies at zone boundaries (e.g. at depth 25, 75, 150, 300). Could award a guaranteed fragment or unique loot.
 - **Starting loadout selection** — let the player pick from a few starter rig configs or spend starting gold on initial parts.
 - **Part selling (direct)** — recycle gives small gold + salvage progress; there's no way to just sell for raw gold. A "sell" button on parts would help early game when you need cash fast.
-- **Shop reroll** — pay a small fee to refresh the shop without running a full descent.
+- ✅ **Shop reroll (DONE)** — "🔄 Reroll (25g)" button in the shop restocks on demand (`Engine.REROLL_COST`).
 - **Cargo overflow mechanic** — once cargo is full, excess ore could be stashed at a penalty (e.g. 50% conversion to gold directly) so it never feels wasted.
 - **Speed as a risk/reward slider** — currently it's a stat you build; could invert some parts to give +detect or +cargo at the cost of −speed.
 - **Zone biomes / environmental modifiers** — each zone (Crust, Mantle, Outer Core…) could apply a unique rule to the simulation, so reaching a new depth tier feels like a real shift, not just bigger numbers:
@@ -67,16 +67,16 @@ Ideas you specifically asked to add:
 
 - **Pause during drill replay** — pause/resume button so you can read a log line before it scrolls away.
 - **Run history** — a log of last N runs with depth, zone, gold earned, cause of death. Stored in state.
-- **Part-count badge on stacked cards** — currently stacked cards show a visual "pile" but no count. Show ×N.
+- ✅ **Part-count badge on stacked cards (DONE)** — stacked cards now show a ×N badge.
 - **Animation for fragment craft** — when fragments auto-combine, a brief celebration toast or card-flip would feel satisfying.
 - **Inline grid coordinates** — tiny row/col markers on the grid edges would help when planning complex layouts.
 - **Drag preview shows synergy highlights** — when hovering a part over the grid, temporarily highlight which placed parts would gain synergy.
 - **Keyboard shortcuts during drill** — Space to pause, S to surface, A to auto-skip.
-- **Filter/sort inventory** — with 35+ parts, a text filter or sort-by-type would help find specific parts quickly.
-- **Quick-start** — if a save exists, skip the title screen and go straight to the workshop.
+- ✅ **Filter/sort inventory (DONE)** — inventory is grouped into labeled type sections, families ordered by rarity (a text filter could still be added).
+- ✅ **Quick-start (DONE)** — boot jumps straight into the workshop when a save exists; "⌂ Title Menu" button returns.
 - **Log filters on drill screen** — filter the replay/enriched log by event type (enemies only, loot only) for post-run analysis.
-- **Status bar during drill** — compact HUD showing current depth, heat, HP, cargo in a single line that stays visible while the log scrolls.
-- **Confirmation on New Run** — "This will erase your current progress. Continue?" dialog.
+- ✅ **Status bar during drill (DONE)** — the drill screen has a depth/zone/HP/heat/cargo status bar; the workshop also has a compact rig HUD on mobile.
+- ✅ **Confirmation on New Run (DONE)** — `UI.confirmModal` warns before wiping a save.
 - **Dark mode toggle** — it's already dark, but a high-contrast / colorblind-friendly mode option.
 
 ## Simulation & Balance
@@ -95,7 +95,7 @@ Ideas you specifically asked to add:
 - **Milestone rewards beyond gold** — unlock cosmetics (color theme), starting part choices, or small passive bonuses.
 - **Lore fragments** — text snippets found at depth that piece together the story (why are we drilling? what's down there?). Purely cosmetic but gives the descent meaning.
 - **Bounty system** — optional objectives per run ("reach depth 75 with cargo ≤ 10" or "defeat 3 enemies without cooling"). Rewards bonus gold or fragments. Gives each run a mini-goal beyond "go deeper."
-- **Run streak bonus** — consecutive successful surfaces (drone survived) grant a stacking gold multiplier. A destroyed drone resets it. Encourages cautious play and return-policy tuning.
+- ✅ **Run streak bonus (DONE)** — consecutive safe returns stack a haul-gold multiplier (+10% each, capped +100%); a destroyed drone resets it. `streak` save field; shown in workshop stats + run-complete summary.
 
 ## Technical
 
@@ -111,7 +111,7 @@ Ideas you specifically asked to add:
 ## Polish
 
 - **CRT scanline toggle** — the overlay is hardcoded; a settings toggle would let players disable the retro effect.
-- **Better mobile layout** — the workshop sidebars collapse vertically but the grid becomes very small on narrow screens. A tabbed mobile layout would help.
+- ✅ **Better mobile layout (DONE)** — workshop flows as a scrollable column (rig first), parts as a horizontal swipe-strip, compact rig HUD, slim recycle, tap-to-place, and a fixed run-complete controls bar. (Shrinking grid cells for expanded rigs on narrow screens is still open.)
 - **Sound effect variety** — tick, loot, overheat, destroyed, milestone, launch, surface. Could add distinct sounds for enemies, fragment craft, shop purchase.
 - **Title screen animation** — animated drill-bit or strata crawl behind the title to set the mood.
 - **Surface sequence animation** — when the drone surfaces, a brief animated sequence of it rising through the strata before the results show.
