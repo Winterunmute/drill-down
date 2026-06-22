@@ -135,6 +135,7 @@ DrillDown.Engine = (() => {
     for (const k in adjacencyBonus) stats[k] += adjacencyBonus[k];
 
     // -- Reactor cores: amplify the primary stat of each orthogonally-adjacent part --
+    // (clamps applied at the end so part downsides like -speed can't push stats below sane floors)
     const primaryStat = { drill: 'drillPower', cooling: 'cooling', defense: 'hp' };
     for (const pid in grid.placed) {
       const p = grid.placed[pid];
@@ -154,6 +155,16 @@ DrillDown.Engine = (() => {
         }
       }
     }
+
+    // Floors: part trade-offs (e.g. heavy armor's -speed) can subtract, but the
+    // robot still needs to move, carry, and survive.
+    stats.speed = Math.max(0.3, stats.speed);
+    stats.cargo = Math.max(1, stats.cargo);
+    stats.hp = Math.max(1, stats.hp);
+    stats.drillPower = Math.max(0, stats.drillPower);
+    stats.cooling = Math.max(0, stats.cooling);
+    stats.armor = Math.max(0, stats.armor);
+    stats.detect = Math.max(0, stats.detect);
 
     return stats;
   }
@@ -407,6 +418,64 @@ DrillDown.Engine = (() => {
     return result;
   }
 
+  // -- Fragments & recycling --
+  // Add one fragment toward partId; auto-craft a full part into inventory once the
+  // rarity threshold (2 rare / 3 unique) is reached. Returns crafting outcome.
+  function addFragment(state, partId) {
+    if (!state.fragments) state.fragments = {};
+    const def = P[partId];
+    const needed = def && def.rarity === 'unique' ? 3 : 2;
+    state.fragments[partId] = (state.fragments[partId] || 0) + 1;
+    let crafted = false;
+    if (state.fragments[partId] >= needed) {
+      state.fragments[partId] = 0;
+      state.inventory.push(partId);
+      crafted = true;
+    }
+    return { crafted, now: state.fragments[partId], needed };
+  }
+
+  // Recycling a part yields a little gold and fills a salvage meter (0–100); rarer
+  // parts contribute more. When the meter fills it awards a fragment toward a random
+  // rare/unique part (which auto-crafts at its threshold). Caller must already have
+  // removed the part from the grid/inventory.
+  const RECYCLE_GOLD = { common: 5, uncommon: 10, rare: 20, unique: 35 };
+  const RECYCLE_PROGRESS = { common: 10, uncommon: 20, rare: 40, unique: 70 };
+
+  function craftablePartIds() {
+    return Object.keys(P).filter(id => P[id].rarity === 'rare' || P[id].rarity === 'unique');
+  }
+
+  function randomCraftable() {
+    const rares = [], uniques = [];
+    for (const id of craftablePartIds()) (P[id].rarity === 'unique' ? uniques : rares).push(id);
+    const pool = (uniques.length && Math.random() < 0.25) ? uniques : (rares.length ? rares : uniques);
+    return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+  }
+
+  function recyclePart(state, partId) {
+    const def = P[partId];
+    const rarity = def ? def.rarity : 'common';
+    const gold = RECYCLE_GOLD[rarity] || 5;
+    state.gold += gold;
+    state.recycleProgress = (state.recycleProgress || 0) + (RECYCLE_PROGRESS[rarity] || 10);
+    const out = { gold, filled: false, awardedPartId: null, crafted: false };
+    if (state.recycleProgress >= 100) {
+      state.recycleProgress -= 100;
+      const awardId = randomCraftable();
+      if (awardId) {
+        const res = addFragment(state, awardId);
+        out.filled = true;
+        out.awardedPartId = awardId;
+        out.crafted = res.crafted;
+        out.fragNow = res.now;
+        out.fragNeeded = res.needed;
+      }
+    }
+    out.progress = state.recycleProgress;
+    return out;
+  }
+
   // -- Shop --
   function generateShop(runNumber) {
     const pool = { common: [], uncommon: [], rare: [] };
@@ -438,6 +507,7 @@ DrillDown.Engine = (() => {
         grid: state.grid,
         inventory: state.inventory,
         fragments: state.fragments || {},
+        recycleProgress: state.recycleProgress || 0,
         returnPolicy: state.returnPolicy || { cargoFull: true, hpPct: 0 },
         milestones: state.milestones || [],
         runNumber: state.runNumber,
@@ -466,6 +536,7 @@ DrillDown.Engine = (() => {
     createGrid, cloneGrid, canPlace, placePart, removePart, getPartAt, expandGrid,
     computeStats, rockHardness, getEvent, simulateRun,
     generateShop, shopCost,
+    addFragment, recyclePart, RECYCLE_GOLD, RECYCLE_PROGRESS,
     zoneFor, MILESTONES, gridSynergies,
     save, load
   };

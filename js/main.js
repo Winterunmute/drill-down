@@ -10,6 +10,7 @@ DrillDown.Game = (() => {
       grid: Eng.createGrid(3, 4),
       inventory: ['basic_drill', 'small_fan', 'light_plating', 'cargo_pod'],
       fragments: {},
+      recycleProgress: 0,
       returnPolicy: { cargoFull: true, hpPct: 0 },
       milestones: [],
       shop: Eng.generateShop(1),
@@ -65,6 +66,11 @@ DrillDown.Game = (() => {
       if (e.key === 'Escape') {
         document.getElementById('shop-overlay')?.classList.remove('active');
         UI.cancelDrag?.();
+      }
+      // R rotates the part being dragged, or the part card under the cursor
+      if (e.key === 'r' || e.key === 'R') {
+        if (UI.isDragging?.()) { e.preventDefault(); UI.rotateDrag?.(); }
+        else if (UI.rotateHovered?.()) { e.preventDefault(); }
       }
     });
     // Right-click cancels an in-progress drag (and suppresses the browser menu)

@@ -16,6 +16,23 @@ DrillDown.UI = (() => {
 
   let dragState = null;
   let tooltipEl = null;
+  let hoveredCard = null;
+
+  // Lightweight transient notification (recycle results, etc.)
+  function toast(msg, kind) {
+    let host = document.getElementById('toast-host');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'toast-host';
+      document.body.appendChild(host);
+    }
+    const line = document.createElement('div');
+    line.className = 'toast-line' + (kind ? ' toast-' + kind : '');
+    line.innerHTML = msg;
+    host.appendChild(line);
+    setTimeout(() => line.classList.add('toast-out'), 2400);
+    setTimeout(() => line.remove(), 3000);
+  }
 
   // Normalize mouse + touch events to a single {clientX, clientY} point.
   function evtPoint(e) {
@@ -51,7 +68,7 @@ DrillDown.UI = (() => {
     if (def.stats.hp) lines.push(`❤ HP: <b>+${def.stats.hp}</b><div class="tt-desc">Raises max health. The run ends instantly when HP reaches 0 and the haul is lost.</div>`);
     if (def.stats.armor) lines.push(`🛡 Armor: <b>${def.stats.armor}</b><div class="tt-desc">Flat damage reduction subtracted from every enemy hit. Stacks across all your defense parts.</div>`);
     if (def.stats.cargo) lines.push(`📦 Cargo: <b>+${def.stats.cargo}</b><div class="tt-desc">Max ore you can haul per run. Once cargo is full you stop collecting — more cargo = more gold.</div>`);
-    if (def.stats.speed) lines.push(`⚡ Speed: <b>+${def.stats.speed}</b><div class="tt-desc">Extra depth steps per tick. Descend faster, but each step also rolls more heat and more enemies.</div>`);
+    if (def.stats.speed) lines.push(`⚡ Speed: <b>${def.stats.speed > 0 ? '+' : ''}${def.stats.speed}</b><div class="tt-desc">Extra depth steps per tick — heavy parts can reduce it. Faster = more loot, but more heat and enemy rolls each step.</div>`);
     if (def.stats.detect) lines.push(`📡 Detect: <b>+${def.stats.detect}%</b><div class="tt-desc">Boosts the odds of finding ore veins, rare Void Crystals, and ancient caches as you drill.</div>`);
     const tip = synergyTip(def);
     if (tip) lines.push(`<div class="tt-tip">🔗 ${tip}</div>`);
@@ -113,11 +130,8 @@ DrillDown.UI = (() => {
     if (!canAfford) el.classList.add('part-cant-afford');
     el.style.borderColor = canAfford ? (DrillDown.RARITY_COLORS[def.rarity] || '#fff') : '#444';
 
-    const displayShape = opts.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
-    const w = Math.max(...displayShape.map(([r,c]) => c)) + 1;
-    const h = Math.max(...displayShape.map(([r,c]) => r)) + 1;
-    el.style.width = (w * 52) + 'px';
-    el.style.height = (h * 52) + 'px';
+    el.dataset.rotated = opts.rotated ? '1' : '0';
+    sizeCard(el, def, !!opts.rotated);
 
     const statsLine = statSummary(def);
     el.innerHTML = `
@@ -128,29 +142,52 @@ DrillDown.UI = (() => {
       <div class="part-card-stats">${statsLine}</div>
     `;
 
-    // Hover tooltip
-    el.addEventListener('mouseenter', (e) => { showTooltip(partId, e); });
+    // Hover tooltip + track the hovered card so R can pre-rotate it before pickup
+    el.addEventListener('mouseenter', (e) => { hoveredCard = { el, partId }; showTooltip(partId, e); });
     el.addEventListener('mousemove', (e) => { positionTooltip(e); });
-    el.addEventListener('mouseleave', hideTooltip);
+    el.addEventListener('mouseleave', () => { if (hoveredCard && hoveredCard.el === el) hoveredCard = null; hideTooltip(); });
 
-    // Pointer down (mouse or touch): drag from inventory, or shop
+    // Pointer down (mouse or touch): drag from inventory, or shop — preserving any pre-rotation
     const onDown = (e) => {
       if (e.type === 'mousedown' && e.button !== 0) return;
       if (e.target.closest('.sell-btn')) return;
       if (e.type === 'touchstart' && e.cancelable) e.preventDefault();
+      const rotated = el.dataset.rotated === '1';
       if (opts.fromShop) {
         const gs = DrillDown.Game.state;
         if (gs.gold < def.cost) return;
         document.getElementById('shop-overlay')?.classList.remove('active');
-        startDrag(partId, false, null, e, true);
+        startDrag(partId, rotated, null, e, true);
         return;
       }
-      startDrag(partId, false, null, e, false);
+      startDrag(partId, rotated, null, e, false);
     };
     el.addEventListener('mousedown', onDown);
     el.addEventListener('touchstart', onDown, { passive: false });
 
     return el;
+  }
+
+  // Size a part card (the inventory/shop preview rectangle) to its shape's bounding box.
+  function sizeCard(el, def, rotated) {
+    const shape = rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
+    const w = Math.max(...shape.map(([r,c]) => c)) + 1;
+    const h = Math.max(...shape.map(([r,c]) => r)) + 1;
+    el.style.width = (w * 52) + 'px';
+    el.style.height = (h * 52) + 'px';
+  }
+
+  // Rotate the part card currently under the cursor (R when not dragging). Returns
+  // true if something was rotated so the caller can swallow the key.
+  function rotateHovered() {
+    if (!hoveredCard || !hoveredCard.el || !document.body.contains(hoveredCard.el)) { hoveredCard = null; return false; }
+    const def = P[hoveredCard.partId];
+    if (!def) return false;
+    const rotated = hoveredCard.el.dataset.rotated !== '1';
+    hoveredCard.el.dataset.rotated = rotated ? '1' : '0';
+    sizeCard(hoveredCard.el, def, rotated);
+    A?.tick?.();
+    return true;
   }
 
   // Placement advice shown in the tooltip, keyed off the part's type. Mirrors the
@@ -180,60 +217,107 @@ DrillDown.UI = (() => {
     return parts.join(' ');
   }
 
+  const LONG_PRESS_MS = 450;   // hold-to-rotate delay on touch
+  const MOVE_TOLERANCE = 14;   // px of drift allowed before a hold counts as a drag
+
   function startDrag(partId, rotated, pid, e, fromShop) {
     if (dragState) endDrag(null);
     const def = P[partId];
     if (!def) return;
-    const shape = rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
-    const w = Math.max(...shape.map(([r,c]) => c)) + 1;
-    const h = Math.max(...shape.map(([r,c]) => r)) + 1;
 
     const ghost = document.createElement('div');
     ghost.className = 'drag-ghost';
-    ghost.style.width = (w * CELL + (w - 1) * GAP) + 'px';
-    ghost.style.height = (h * CELL + (h - 1) * GAP) + 'px';
     ghost.style.background = def.color + '88';
     ghost.style.borderColor = DrillDown.RARITY_COLORS[def.rarity];
-    ghost.innerHTML = `<span>${def.name}</span>`;
+    ghost.innerHTML = `<span>${def.name}</span><span class="ghost-hint">R / hold ⟳</span>`;
     const pt = evtPoint(e);
     ghost.style.left = (pt.clientX - 30) + 'px';
     ghost.style.top = (pt.clientY - 30) + 'px';
     document.body.appendChild(ghost);
 
-    dragState = { partId, rotated, ghost, fromGrid: !!pid, pid, partDef: def, fromShop: !!fromShop };
+    const isTouch = e.type === 'touchstart' || e.type === 'touchmove';
+    dragState = { partId, rotated, ghost, fromGrid: !!pid, pid, partDef: def, fromShop: !!fromShop, isTouch, lastPt: pt };
+    sizeGhost();
+    if (isTouch) armLongPress(pt);
+
     document.addEventListener('mousemove', onDragMove);
     document.addEventListener('mouseup', onDragEnd);
     document.addEventListener('touchmove', onDragMove, { passive: false });
     document.addEventListener('touchend', onDragEnd);
   }
 
+  // Resize the drag ghost to match the current (possibly rotated) shape.
+  function sizeGhost() {
+    if (!dragState) return;
+    const def = dragState.partDef;
+    const shape = dragState.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
+    const w = Math.max(...shape.map(([r,c]) => c)) + 1;
+    const h = Math.max(...shape.map(([r,c]) => r)) + 1;
+    dragState.ghost.style.width = (w * CELL + (w - 1) * GAP) + 'px';
+    dragState.ghost.style.height = (h * CELL + (h - 1) * GAP) + 'px';
+  }
+
+  // Rotate the part currently being dragged (R key on desktop, long-press on touch).
+  function rotateDrag() {
+    if (!dragState) return;
+    dragState.rotated = !dragState.rotated;
+    sizeGhost();
+    A?.tick?.();
+    refreshHover(dragState.lastPt);
+  }
+
+  // (Re)start the hold-to-rotate timer for touch. Continuous movement keeps
+  // re-arming it from the new anchor, so it only fires once the finger holds still.
+  function armLongPress(pt) {
+    if (!dragState) return;
+    if (dragState.longPressTimer) clearTimeout(dragState.longPressTimer);
+    dragState.lpAnchor = pt;
+    dragState.longPressTimer = setTimeout(() => {
+      dragState.longPressTimer = null;
+      rotateDrag();
+    }, LONG_PRESS_MS);
+  }
+
+  // Repaint the grid placement preview + recycle-bin highlight for a pointer position.
+  function refreshHover(pt) {
+    if (!dragState || !pt) return;
+    const gridEl = document.getElementById('grid-container');
+    document.querySelectorAll('.grid-cell').forEach(el => el.classList.remove('grid-hover-ok', 'grid-hover-bad'));
+    if (gridEl) {
+      const rect = gridEl.getBoundingClientRect();
+      const col = Math.floor((pt.clientX - rect.left) / (CELL + GAP));
+      const row = Math.floor((pt.clientY - rect.top) / (CELL + GAP));
+      const def = dragState.partDef;
+      const shape = dragState.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
+      const valid = row >= 0 && col >= 0 && Eng.canPlace(DrillDown.Game.state.grid, dragState.partId, row, col, dragState.rotated);
+      if (valid) {
+        for (const [dr, dc] of shape) {
+          const idx = (row + dr) * parseInt(gridEl.dataset.cols) + (col + dc);
+          const cell = gridEl.querySelector(`.grid-cell[data-index="${idx}"]`);
+          if (cell) cell.classList.add('grid-hover-ok');
+        }
+      }
+    }
+    const recycleBin = document.getElementById('recycle-bin');
+    if (recycleBin) recycleBin.classList.toggle('bin-hover', !dragState.fromShop && pointInEl(pt, recycleBin));
+  }
+
   function onDragMove(e) {
     if (!dragState) return;
     if (e.type === 'touchmove' && e.cancelable) e.preventDefault();
     const pt = evtPoint(e);
+    dragState.lastPt = pt;
     dragState.ghost.style.left = (pt.clientX - 30) + 'px';
     dragState.ghost.style.top = (pt.clientY - 30) + 'px';
 
-    const gridEl = document.getElementById('grid-container');
-    if (!gridEl) return;
-    const rect = gridEl.getBoundingClientRect();
-    const col = Math.floor((pt.clientX - rect.left) / (CELL + GAP));
-    const row = Math.floor((pt.clientY - rect.top) / (CELL + GAP));
-    const def = dragState.partDef;
-    const shape = dragState.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
-    const valid = row >= 0 && col >= 0 && Eng.canPlace(DrillDown.Game.state.grid, dragState.partId, row, col, dragState.rotated);
-
-    document.querySelectorAll('.grid-cell').forEach(el => el.classList.remove('grid-hover-ok', 'grid-hover-bad'));
-    if (valid) {
-      for (const [dr, dc] of shape) {
-        const idx = (row + dr) * parseInt(gridEl.dataset.cols) + (col + dc);
-        const cell = gridEl.querySelector(`.grid-cell[data-index="${idx}"]`);
-        if (cell) cell.classList.add('grid-hover-ok');
-      }
+    // On touch, drifting away from the anchor means this is a drag, not a hold —
+    // re-arm the rotate timer so it only fires after the finger settles again.
+    if (dragState.isTouch && dragState.lpAnchor) {
+      const moved = Math.hypot(pt.clientX - dragState.lpAnchor.clientX, pt.clientY - dragState.lpAnchor.clientY);
+      if (moved > MOVE_TOLERANCE) armLongPress(pt);
     }
 
-    const sellBin = document.getElementById('sell-bin');
-    if (sellBin) sellBin.classList.toggle('bin-hover', !dragState.fromShop && pointInEl(pt, sellBin));
+    refreshHover(pt);
   }
 
   function endDrag(e) {
@@ -242,6 +326,7 @@ DrillDown.UI = (() => {
     document.removeEventListener('touchmove', onDragMove);
     document.removeEventListener('touchend', onDragEnd);
     if (!dragState) return;
+    if (dragState.longPressTimer) clearTimeout(dragState.longPressTimer);
     const gs = DrillDown.Game.state;
     const gridEl = document.getElementById('grid-container');
     const pt = e ? evtPoint(e) : null;
@@ -293,18 +378,29 @@ DrillDown.UI = (() => {
           }
         }
       } else {
-        const sellBin = document.getElementById('sell-bin');
-        const overBin = pointInEl(pt, sellBin);
+        const recycleBin = document.getElementById('recycle-bin');
+        const overBin = pointInEl(pt, recycleBin);
         if (overBin && !dragState.fromShop) {
-          // Sell: refund 50% of cost. Grid parts were already removed at drag start.
-          const def = P[dragState.partId];
-          const refund = Math.floor((def?.cost || 0) * 0.5);
+          // Recycle: small gold + salvage-meter progress. Grid parts were already
+          // removed at drag start; inventory parts must be removed here first.
+          let doRecycle = false;
           if (dragState.fromGrid) {
-            gs.gold += refund;
-            placed = true;
+            doRecycle = true;
           } else {
             const idx = gs.inventory.indexOf(dragState.partId);
-            if (idx >= 0) { gs.inventory.splice(idx, 1); gs.gold += refund; placed = true; }
+            if (idx >= 0) { gs.inventory.splice(idx, 1); doRecycle = true; }
+          }
+          if (doRecycle) {
+            placed = true;
+            const recycledId = dragState.partId;
+            const r = Eng.recyclePart(gs, recycledId);
+            toast(`♻ Recycled <b>${P[recycledId]?.name || 'part'}</b> · <span class="gold">+${r.gold}g</span> · salvage ${Math.round(r.progress)}%`, 'loot');
+            if (r.awardedPartId) {
+              const awName = P[r.awardedPartId]?.name || 'part';
+              if (r.crafted) toast(`✦ Salvage complete — crafted <b>${awName}</b>!`, 'rare');
+              else toast(`✦ Salvage complete — <b>${awName}</b> fragment (${r.fragNow}/${r.fragNeeded})`, 'rare');
+              A?.loot?.();
+            }
           }
         } else if (!overBin) {
           // Dropped outside grid — check inventory panel (buy from shop into storage)
@@ -329,7 +425,7 @@ DrillDown.UI = (() => {
     }
 
     document.querySelectorAll('.grid-hover-ok, .grid-hover-bad').forEach(el => el.classList.remove('grid-hover-ok', 'grid-hover-bad'));
-    document.getElementById('sell-bin')?.classList.remove('bin-hover');
+    document.getElementById('recycle-bin')?.classList.remove('bin-hover');
     dragState.ghost.remove();
     dragState = null;
     Eng.save(gs);
@@ -342,6 +438,7 @@ DrillDown.UI = (() => {
   function renderWorkshop() {
     const gs = DrillDown.Game.state;
     if (!gs.returnPolicy) gs.returnPolicy = { cargoFull: true, hpPct: 0 };
+    if (gs.recycleProgress == null) gs.recycleProgress = 0;
     showScreen('workshop');
     const left = document.getElementById('workshop-left');
     const center = document.getElementById('workshop-center');
@@ -383,9 +480,15 @@ DrillDown.UI = (() => {
       invGrid.innerHTML = '<div class="empty-hint">No parts. Buy from shop!</div>';
     }
     if (fragHtml) leftScroll.insertAdjacentHTML('beforeend', fragHtml);
-    // Sell bin is pinned to the bottom of the left bar (outside the scroll area).
+    // Recycle bin is pinned to the bottom of the left bar (outside the scroll area).
+    const recPct = Math.max(0, Math.min(100, Math.round(gs.recycleProgress)));
     left.insertAdjacentHTML('beforeend',
-      '<div id="sell-bin"><div class="sell-bin-title">SELL BIN</div><div class="sell-bin-hint">drag a part here &middot; 50% refund</div></div>');
+      `<div id="recycle-bin" title="Recycle parts for gold. Rarer parts fill the salvage meter faster — at 100% you craft a fragment of a random rare/unique part.">
+        <div class="recycle-bin-title">♻ RECYCLE</div>
+        <div class="recycle-bin-hint">drag a part here for gold + salvage</div>
+        <div class="recycle-meter"><div class="recycle-meter-fill" style="width:${recPct}%"></div></div>
+        <div class="recycle-meter-label">Salvage ${recPct}% → rare/unique fragment</div>
+      </div>`);
 
     const grid = gs.grid;
     const totalW = grid.cols * (CELL + GAP) - GAP;
@@ -690,16 +793,8 @@ DrillDown.UI = (() => {
       gs.gold += bonusGold + oreGold;
       if (!gs.fragments) gs.fragments = {};
       if (survived) {
-        // Process fragments — 2 for rare, 3 for unique
-        for (const partId of runResult.foundParts) {
-          const def = P[partId];
-          const needed = def && def.rarity === 'unique' ? 3 : 2;
-          gs.fragments[partId] = (gs.fragments[partId] || 0) + 1;
-          if (gs.fragments[partId] >= needed) {
-            gs.fragments[partId] = 0;
-            gs.inventory.push(partId);
-          }
-        }
+        // Process fragments — auto-crafts at 2 (rare) / 3 (unique)
+        for (const partId of runResult.foundParts) Eng.addFragment(gs, partId);
       }
       gs.totalRuns = (gs.totalRuns || 0) + 1;
       if (runResult.maxDepth > (gs.bestDepth || 0)) gs.bestDepth = runResult.maxDepth;
@@ -849,13 +944,14 @@ DrillDown.UI = (() => {
         <div class="help-section">
           <h3>🗺️ Grid & Placement</h3>
           <p>Parts have shapes (1×1, 1×2, 2×2, L-shape). Fit them together like Tetris.</p>
-          <p><b>Drag</b> from inventory to place. <b>Double-click</b> a placed part to rotate it.<br>
+          <p><b>Drag</b> from inventory to place. Press <b>R</b> to <b>rotate</b> — while dragging, or while just hovering a part in your inventory/shop (or <b>hold</b> your finger still on touch while dragging).<br>
           <b>Right-click or Escape</b> to cancel a drag. <b>Expand</b> the grid for more room.</p>
         </div>
         <div class="help-section">
           <h3>🏪 Shop & Economy</h3>
-          <p>Open the shop between runs. <b>Drag a part</b> to buy it — drop on the grid to place, or on your inventory to store. Drag any part to the <b>Sell Bin</b> for a 50% refund.</p>
+          <p>Open the shop between runs. <b>Drag a part</b> to buy it — drop on the grid to place, or on your inventory to store.</p>
           <p>Ore converts to gold automatically. Find rare <b>Void Crystals</b> for bonus gold.</p>
+          <p><b>♻ Recycle Bin</b> — drag any part you don't want here. You get a little gold <em>and</em> fill a salvage meter; rarer parts fill it faster. At 100% you craft a fragment toward a random rare/unique part — a second way to build toward the best gear.</p>
           <p><b>⚠ You only keep your haul if you surface.</b> If the drone is destroyed, all ore and fragments it was carrying are lost. Set a <b>Return Policy</b> (return when cargo full / emergency ascent at low HP) to bank your loot before it's too late.</p>
         </div>
         <div class="help-section">
@@ -892,12 +988,13 @@ DrillDown.UI = (() => {
 
   function cancelDrag() {
     if (!dragState) return;
+    if (dragState.longPressTimer) clearTimeout(dragState.longPressTimer);
     document.removeEventListener('mousemove', onDragMove);
     document.removeEventListener('mouseup', onDragEnd);
     document.removeEventListener('touchmove', onDragMove);
     document.removeEventListener('touchend', onDragEnd);
     document.querySelectorAll('.grid-hover-ok, .grid-hover-bad').forEach(el => el.classList.remove('grid-hover-ok', 'grid-hover-bad'));
-    document.getElementById('sell-bin')?.classList.remove('bin-hover');
+    document.getElementById('recycle-bin')?.classList.remove('bin-hover');
     if (dragState.ghost) dragState.ghost.remove();
     if (dragState.fromGrid) {
       DrillDown.Game.state.inventory.push(dragState.partId);
@@ -908,6 +1005,6 @@ DrillDown.UI = (() => {
 
   return {
     showScreen, renderTitle, renderWorkshop, renderShop, renderDrill,
-    createPartElement, initTooltip, cancelDrag, isDragging
+    createPartElement, initTooltip, cancelDrag, isDragging, rotateDrag, rotateHovered
   };
 })();
