@@ -17,7 +17,9 @@ DrillDown.UI = (() => {
   let dragState = null;
   let tooltipEl = null;
   let hoveredCard = null;
-  let selected = null;          // tap-to-place: { partId, rotated } currently armed for placement
+  let lastGridTap = null;       // { pid, t } — detects double-tap on a placed part (native
+                                // dblclick is unreliable: each tap re-renders the grid)
+  let selected = null;          // tap-to-place: { partId, rot } currently armed for placement
 
   const TAP_TIME = 250;         // ms — a press shorter than this with no drift counts as a tap
   const TAP_MOVE = 10;          // px of drift allowed before a press becomes a drag (not a tap)
@@ -68,6 +70,34 @@ DrillDown.UI = (() => {
   }
 
   function isDragging() { return !!dragState; }
+
+  // Per-cell blocks for a shape, so irregular parts (T / S / L / U / W...) only paint
+  // the cells they actually occupy instead of their bounding rectangle. Returns
+  // absolutely-positioned divs; the caller styles them via the inline css string.
+  function shapeCellsHtml(shape, cellPx, gapPx, css) {
+    return shape.map(([r, c]) =>
+      `<div class="shape-cell" style="left:${c * (cellPx + gapPx)}px;top:${r * (cellPx + gapPx)}px;width:${cellPx}px;height:${cellPx}px;${css || ''}"></div>`
+    ).join('');
+  }
+
+  function shapeBounds(shape) {
+    return {
+      w: Math.max(...shape.map(([r, c]) => c)) + 1,
+      h: Math.max(...shape.map(([r, c]) => r)) + 1
+    };
+  }
+
+  // Edge arrows for directional parts (Blast Furnace, Cryo Cascade...): one arrow per
+  // effect on the matching bounding-box edge, green for boost / red for scorch. Sides
+  // rotate with the part, so the arrows always show the live facing.
+  const DIR_ARROWS = { up: '▲', right: '▶', down: '▼', left: '◀' };
+  function dirArrowsHtml(def, rot) {
+    if (!def.dirEffects) return '';
+    return def.dirEffects.map(eff => {
+      const side = Eng.rotateSide(eff.side, rot);
+      return `<span class="dir-arrow dir-${side} ${eff.amp > 0 ? 'dir-boost' : 'dir-scorch'}" title="${eff.amp > 0 ? 'Boosts' : 'Scorches'} parts on this side (${eff.amp > 0 ? '+' : ''}${Math.round(eff.amp * 100)}%)">${DIR_ARROWS[side]}</span>`;
+    }).join('');
+  }
 
   function pointInEl(pt, el) {
     if (!pt || !el) return false;
@@ -169,16 +199,16 @@ DrillDown.UI = (() => {
     if (!canAfford) el.classList.add('part-cant-afford');
     el.style.borderColor = canAfford ? (DrillDown.RARITY_COLORS[def.rarity] || '#fff') : '#444';
 
-    el.dataset.rotated = opts.rotated ? '1' : '0';
-    sizeCard(el, def, !!opts.rotated);
+    el.dataset.rot = String(opts.rot || 0);
 
     // Stats are intentionally not shown on the card — hover/hold for the full tooltip.
     el.innerHTML = `
-      <div class="part-card-bg" style="background:${def.color}22; border-color:${def.color}"></div>
+      <div class="part-card-bg"></div>
       <div class="part-card-name">${def.name}</div>
       <div class="part-card-rarity ${def.rarity}">${def.rarity}</div>
       <div class="part-card-cost">${opts.showCost ? price + 'g' : ''}</div>
     `;
+    sizeCard(el, def, opts.rot || 0);
 
     // Hover tooltip + track the hovered card so R can pre-rotate it before pickup
     el.addEventListener('mouseenter', (e) => { hoveredCard = { el, partId }; showTooltip(partId, e); });
@@ -190,15 +220,15 @@ DrillDown.UI = (() => {
       if (e.type === 'mousedown' && e.button !== 0) return;
       if (e.target.closest('.sell-btn') || e.target.closest('.upgrade-btn')) return;
       if (e.type === 'touchstart' && e.cancelable) e.preventDefault();
-      const rotated = el.dataset.rotated === '1';
+      const rot = parseInt(el.dataset.rot || '0');
       if (opts.fromShop) {
         const gs = DrillDown.Game.state;
         if (gs.gold < Eng.shopCost(partId)) return;
         document.getElementById('shop-overlay')?.classList.remove('active');
-        startDrag(partId, rotated, null, e, true);
+        startDrag(partId, rot, null, e, true);
         return;
       }
-      startDrag(partId, rotated, null, e, false);
+      startDrag(partId, rot, null, e, false);
     };
     el.addEventListener('mousedown', onDown);
     el.addEventListener('touchstart', onDown, { passive: false });
@@ -206,13 +236,16 @@ DrillDown.UI = (() => {
     return el;
   }
 
-  // Size a part card (the inventory/shop preview rectangle) to its shape's bounding box.
-  function sizeCard(el, def, rotated) {
-    const shape = rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
-    const w = Math.max(...shape.map(([r,c]) => c)) + 1;
-    const h = Math.max(...shape.map(([r,c]) => r)) + 1;
-    el.style.width = (w * 52) + 'px';
-    el.style.height = (h * 52) + 'px';
+  // Size a part card to its shape's bounding box and draw the shape silhouette in the
+  // card background, so irregular parts read at a glance instead of as plain rectangles.
+  const CARD_CELL = 50, CARD_GAP = 2;
+  function sizeCard(el, def, rot) {
+    const shape = Eng.shapeFor(def, rot);
+    const { w, h } = shapeBounds(shape);
+    el.style.width = (w * (CARD_CELL + CARD_GAP)) + 'px';
+    el.style.height = (h * (CARD_CELL + CARD_GAP)) + 'px';
+    const bg = el.querySelector('.part-card-bg');
+    if (bg) bg.innerHTML = shapeCellsHtml(shape, CARD_CELL, CARD_GAP, `background:${def.color}26;border-color:${def.color}55;`) + dirArrowsHtml(def, rot);
   }
 
   // Rotate the part card currently under the cursor (R when not dragging). Returns
@@ -221,9 +254,9 @@ DrillDown.UI = (() => {
     if (!hoveredCard || !hoveredCard.el || !document.body.contains(hoveredCard.el)) { hoveredCard = null; return false; }
     const def = P[hoveredCard.partId];
     if (!def) return false;
-    const rotated = hoveredCard.el.dataset.rotated !== '1';
-    hoveredCard.el.dataset.rotated = rotated ? '1' : '0';
-    sizeCard(hoveredCard.el, def, rotated);
+    const rot = (parseInt(hoveredCard.el.dataset.rot || '0') + 1) % 4;
+    hoveredCard.el.dataset.rot = String(rot);
+    sizeCard(hoveredCard.el, def, rot);
     A?.tick?.();
     return true;
   }
@@ -244,23 +277,20 @@ DrillDown.UI = (() => {
   const LONG_PRESS_MS = 450;   // hold-to-rotate delay on touch
   const MOVE_TOLERANCE = 14;   // px of drift allowed before a hold counts as a drag
 
-  function startDrag(partId, rotated, pid, e, fromShop) {
+  function startDrag(partId, rot, pid, e, fromShop) {
     if (dragState) endDrag(null);
     const def = P[partId];
     if (!def) return;
 
     const ghost = document.createElement('div');
     ghost.className = 'drag-ghost';
-    ghost.style.background = def.color + '88';
-    ghost.style.borderColor = DrillDown.RARITY_COLORS[def.rarity];
-    ghost.innerHTML = `<span>${def.name}</span><span class="ghost-hint">R / hold ⟳</span>`;
     const pt = evtPoint(e);
     ghost.style.left = (pt.clientX - 30) + 'px';
     ghost.style.top = (pt.clientY - 30) + 'px';
     document.body.appendChild(ghost);
 
     const isTouch = e.type === 'touchstart' || e.type === 'touchmove';
-    dragState = { partId, rotated, ghost, fromGrid: !!pid, pid, partDef: def, fromShop: !!fromShop, isTouch, lastPt: pt, startPt: pt, startTime: Date.now(), moved: false };
+    dragState = { partId, rot: (+rot || 0) % 4, ghost, fromGrid: !!pid, pid, partDef: def, fromShop: !!fromShop, isTouch, lastPt: pt, startPt: pt, startTime: Date.now(), moved: false };
     sizeGhost();
     if (isTouch) armLongPress(pt);
 
@@ -270,21 +300,26 @@ DrillDown.UI = (() => {
     document.addEventListener('touchend', onDragEnd);
   }
 
-  // Resize the drag ghost to match the current (possibly rotated) shape.
+  // Resize + redraw the drag ghost for the current rotation. Per-cell blocks so an
+  // irregular shape's ghost matches its real footprint.
   function sizeGhost() {
     if (!dragState) return;
     const def = dragState.partDef;
-    const shape = dragState.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
-    const w = Math.max(...shape.map(([r,c]) => c)) + 1;
-    const h = Math.max(...shape.map(([r,c]) => r)) + 1;
+    const shape = Eng.shapeFor(def, dragState.rot);
+    const { w, h } = shapeBounds(shape);
     dragState.ghost.style.width = (w * CELL + (w - 1) * GAP) + 'px';
     dragState.ghost.style.height = (h * CELL + (h - 1) * GAP) + 'px';
+    dragState.ghost.innerHTML =
+      shapeCellsHtml(shape, CELL, GAP, `background:${def.color}88;border-color:${DrillDown.RARITY_COLORS[def.rarity]};`) +
+      dirArrowsHtml(def, dragState.rot) +
+      `<div class="ghost-label"><span>${def.name}</span><span class="ghost-hint">R / hold ⟳</span></div>`;
   }
 
   // Rotate the part currently being dragged (R key on desktop, long-press on touch).
+  // Cycles through all 4 quarter-turns — irregular shapes have 4 distinct footprints.
   function rotateDrag() {
     if (!dragState) return;
-    dragState.rotated = !dragState.rotated;
+    dragState.rot = (dragState.rot + 1) % 4;
     sizeGhost();
     A?.tick?.();
     refreshHover(dragState.lastPt);
@@ -315,15 +350,15 @@ DrillDown.UI = (() => {
       const col = Math.floor((pt.clientX - rect.left) / (CELL + GAP));
       const row = Math.floor((pt.clientY - rect.top) / (CELL + GAP));
       const def = dragState.partDef;
-      const shape = dragState.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
-      // Green when it would drop here, red otherwise (overlap or off-grid).
-      const valid = Eng.canPlace(DrillDown.Game.state.grid, dragState.partId, row, col, dragState.rotated);
+      const shape = Eng.shapeFor(def, dragState.rot);
+      // Green when it would drop here, red otherwise (overlap, off-grid, or hull void).
+      const valid = Eng.canPlace(DrillDown.Game.state.grid, dragState.partId, row, col, dragState.rot);
       const cls = valid ? 'grid-hover-ok' : 'grid-hover-bad';
       for (const [dr, dc] of shape) {
         const rr = row + dr, cc = col + dc;
         if (rr < 0 || cc < 0 || rr >= rows || cc >= cols) continue; // skip overhang so it can't wrap to another row
         const cell = gridEl.querySelector(`.grid-cell[data-index="${rr * cols + cc}"]`);
-        if (cell) cell.classList.add(cls);
+        if (cell && !cell.classList.contains('cell-void')) cell.classList.add(cls);
       }
     }
     const recycleBin = document.getElementById('recycle-bin');
@@ -365,7 +400,7 @@ DrillDown.UI = (() => {
     // Quick tap (no drift) on an inventory part → arm it for tap-to-place instead of
     // dragging. Far more reliable than drag on a touchscreen. (Grid/shop parts keep drag.)
     if (!dragState.moved && (Date.now() - dragState.startTime) < TAP_TIME && !dragState.fromGrid && !dragState.fromShop) {
-      const tappedId = dragState.partId, tappedRot = dragState.rotated;
+      const tappedId = dragState.partId, tappedRot = dragState.rot;
       dragState.ghost.remove();
       document.querySelectorAll('.grid-hover-ok, .grid-hover-bad').forEach(el => el.classList.remove('grid-hover-ok', 'grid-hover-bad'));
       document.getElementById('recycle-bin')?.classList.remove('bin-hover');
@@ -377,6 +412,31 @@ DrillDown.UI = (() => {
     if (selected) clearSelection();
 
     const gs = DrillDown.Game.state;
+
+    // Quick tap (no drift) on a placed part: put it back exactly where it was, under its
+    // original pid — a click must never displace the part. A second quick tap on the
+    // same part rotates it in place, cycling to the next of the 4 orientations that fits.
+    if (!dragState.moved && (Date.now() - dragState.startTime) < TAP_TIME && dragState.fromGrid && dragState.origPos) {
+      const o = dragState.origPos;
+      const now = Date.now();
+      let rot = o.rot;
+      if (lastGridTap && lastGridTap.pid === dragState.pid && now - lastGridTap.t < 400) {
+        for (let i = 1; i <= 3; i++) {
+          const tryRot = (o.rot + i) % 4;
+          if (Eng.canPlace(gs.grid, dragState.partId, o.row, o.col, tryRot)) { rot = tryRot; break; }
+        }
+        if (rot !== o.rot) A?.tick?.();
+      }
+      Eng.placePart(gs.grid, dragState.partId, o.row, o.col, rot, dragState.pid);
+      lastGridTap = { pid: dragState.pid, t: now };
+      document.querySelectorAll('.grid-hover-ok, .grid-hover-bad').forEach(el => el.classList.remove('grid-hover-ok', 'grid-hover-bad'));
+      document.getElementById('recycle-bin')?.classList.remove('bin-hover');
+      dragState.ghost.remove();
+      dragState = null;
+      Eng.save(gs);
+      DrillDown.Game.updateWorkshop();
+      return;
+    }
     const gridEl = document.getElementById('grid-container');
     const pt = e ? evtPoint(e) : null;
     let placed = false;
@@ -399,11 +459,11 @@ DrillDown.UI = (() => {
       const row = Math.floor((pt.clientY - rect.top) / (CELL + GAP));
 
       // Dropped on valid grid cell
-      if (row >= 0 && col >= 0 && Eng.canPlace(gs.grid, dragState.partId, row, col, dragState.rotated)) {
+      if (row >= 0 && col >= 0 && Eng.canPlace(gs.grid, dragState.partId, row, col, dragState.rot)) {
         if (dragState.fromShop) {
           doPurchase();
           if (purchased) {
-            if (Eng.placePart(gs.grid, dragState.partId, row, col, dragState.rotated)) {
+            if (Eng.placePart(gs.grid, dragState.partId, row, col, dragState.rot)) {
               placed = true;
             } else {
               // refund
@@ -413,7 +473,7 @@ DrillDown.UI = (() => {
             }
           }
         } else if (dragState.fromGrid) {
-          if (Eng.placePart(gs.grid, dragState.partId, row, col, dragState.rotated)) {
+          if (Eng.placePart(gs.grid, dragState.partId, row, col, dragState.rot)) {
             placed = true;
           } else {
             gs.inventory.push(dragState.partId);
@@ -421,7 +481,7 @@ DrillDown.UI = (() => {
         } else {
           const idx = gs.inventory.indexOf(dragState.partId);
           if (idx >= 0) gs.inventory.splice(idx, 1);
-          if (Eng.placePart(gs.grid, dragState.partId, row, col, dragState.rotated)) {
+          if (Eng.placePart(gs.grid, dragState.partId, row, col, dragState.rot)) {
             placed = true;
           } else {
             gs.inventory.push(dragState.partId);
@@ -488,10 +548,10 @@ DrillDown.UI = (() => {
   // -- Tap-to-place (touch-friendly placement) --
   // Tap a part to arm it, then tap a grid cell to drop it (or the recycle bin to scrap
   // it). A floating banner offers rotate / cancel. Coexists with drag — a drag clears it.
-  function selectPart(partId, rotated) {
+  function selectPart(partId, rot) {
     if (!DrillDown.Game.state.inventory.includes(partId)) return;
     if (selected && selected.partId === partId) { clearSelection(); return; }  // re-tap toggles off
-    selected = { partId, rotated: !!rotated };
+    selected = { partId, rot: (+rot || 0) % 4 };
     A?.tick?.();
     showPlacementUI();
   }
@@ -509,10 +569,10 @@ DrillDown.UI = (() => {
     let b = document.getElementById('place-banner');
     if (!b) { b = document.createElement('div'); b.id = 'place-banner'; document.body.appendChild(b); }
     const def = P[selected.partId];
-    b.innerHTML = `<span class="pb-text">Placing <b>${def.name}</b>${selected.rotated ? ' ⟳' : ''} — tap a cell</span>
+    b.innerHTML = `<span class="pb-text">Placing <b>${def.name}</b>${selected.rot ? ` ⟳${selected.rot * 90}°` : ''} — tap a cell</span>
       <button class="btn btn-small btn-secondary" id="pb-rotate">⟳</button>
       <button class="btn btn-small btn-secondary" id="pb-cancel">✕</button>`;
-    b.querySelector('#pb-rotate').onclick = () => { selected.rotated = !selected.rotated; A?.tick?.(); showPlacementUI(); };
+    b.querySelector('#pb-rotate').onclick = () => { selected.rot = (selected.rot + 1) % 4; A?.tick?.(); showPlacementUI(); };
     b.querySelector('#pb-cancel').onclick = () => clearSelection();
   }
 
@@ -520,11 +580,11 @@ DrillDown.UI = (() => {
   function tryPlaceSelected(row, col) {
     if (!selected) return false;
     const gs = DrillDown.Game.state;
-    if (!Eng.canPlace(gs.grid, selected.partId, row, col, selected.rotated)) { A?.tick?.(); return false; }
+    if (!Eng.canPlace(gs.grid, selected.partId, row, col, selected.rot)) { A?.tick?.(); return false; }
     const idx = gs.inventory.indexOf(selected.partId);
     if (idx < 0) { clearSelection(); return false; }
     gs.inventory.splice(idx, 1);
-    Eng.placePart(gs.grid, selected.partId, row, col, selected.rotated);
+    Eng.placePart(gs.grid, selected.partId, row, col, selected.rot);
     A?.tick?.();
     clearSelection();
     Eng.save(gs);
@@ -681,8 +741,7 @@ DrillDown.UI = (() => {
     const stats = Eng.computeStats(grid);
     const totalW = grid.cols * (CELL + GAP) - GAP;
     const totalH = grid.rows * (CELL + GAP) - GAP;
-    const expandCost = 100 + (grid.rows - 3) * 50 + (grid.cols - 4) * 50;
-    const maxSize = grid.rows >= 8 && grid.cols >= 8;
+    const chassisDef = DrillDown.CHASSIS[grid.chassis];
 
     const hasPlaced = Object.keys(grid.placed).length > 0;
     // Compact glanceable HUD shown under the rig on mobile (hidden on desktop via CSS).
@@ -698,10 +757,10 @@ DrillDown.UI = (() => {
       </div>`;
     center.innerHTML = `
       <div class="grid-header">
-        <span>Rig — ${grid.rows}x${grid.cols}</span>
+        <span>${chassisDef ? chassisDef.name : 'Rig'} — ${grid.rows}x${grid.cols}</span>
         <span class="grid-header-actions">
           ${hasPlaced ? `<button class="btn btn-small btn-secondary" id="btn-clear-grid" title="Return all placed parts to your inventory">↩ Clear Grid</button>` : ''}
-          ${maxSize ? '' : `<button class="btn btn-small btn-secondary" id="btn-expand">+ Expand (${expandCost}g)</button>`}
+          <button class="btn btn-small btn-secondary" id="btn-rig-bay" title="Buy and swap chassis — different frames for different builds">🏗 Rig Bay</button>
         </span>
       </div>
       <div id="grid-container" style="width:${totalW}px;height:${totalH}px;position:relative;" data-rows="${grid.rows}" data-cols="${grid.cols}">
@@ -720,6 +779,22 @@ DrillDown.UI = (() => {
         cell.style.top = r * (CELL + GAP) + 'px';
         cell.style.width = CELL + 'px';
         cell.style.height = CELL + 'px';
+        if (grid.voids && grid.voids[r + ',' + c]) {
+          // Structural void — part of the hull outline, not a usable slot.
+          cell.classList.add('cell-void');
+          cell.title = 'Structural void — nothing can be placed here';
+          gridCont.appendChild(cell);
+          continue;
+        }
+        // Zone cell: tint it, badge it with the modifier icon, explain on hover.
+        const mod = DrillDown.CELL_MODS[(grid.mods || {})[r + ',' + c]];
+        if (mod) {
+          cell.classList.add('cell-mod');
+          cell.style.borderColor = mod.color + '66';
+          cell.style.boxShadow = `inset 0 0 12px ${mod.color}2e`;
+          cell.title = `${mod.name} cell — ${mod.desc}`;
+          cell.innerHTML = `<span class="cell-mod-icon" style="color:${mod.color}">${mod.icon}</span>`;
+        }
         // Tap-to-place drop target (no-op unless a part is armed).
         cell.addEventListener('click', () => { if (selected) tryPlaceSelected(r, c); });
         gridCont.appendChild(cell);
@@ -730,22 +805,29 @@ DrillDown.UI = (() => {
       const p = grid.placed[pid];
       const def = P[p.id];
       if (!def) continue;
-      const shape = p.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
-      const w = Math.max(...shape.map(([r,c]) => c)) + 1;
-      const h = Math.max(...shape.map(([r,c]) => r)) + 1;
-      const minC = Math.min(...shape.map(([r,c]) => c));
-      const minR = Math.min(...shape.map(([r,c]) => r));
+      const shape = Eng.shapeFor(def, p.rot);   // normalized: min row/col offsets are 0
+      const { w, h } = shapeBounds(shape);
 
       const el = document.createElement('div');
       el.className = 'placed-part';
-      el.style.left = ((p.col + minC) * (CELL + GAP)) + 'px';
-      el.style.top = ((p.row + minR) * (CELL + GAP)) + 'px';
+      el.style.left = (p.col * (CELL + GAP)) + 'px';
+      el.style.top = (p.row * (CELL + GAP)) + 'px';
       el.style.width = (w * CELL + (w - 1) * GAP) + 'px';
       el.style.height = (h * CELL + (h - 1) * GAP) + 'px';
-      el.style.background = def.color + '44';
-      el.style.borderColor = DrillDown.RARITY_COLORS[def.rarity];
       el.dataset.pid = pid;
-      el.innerHTML = `<span class="placed-name">${def.name}</span>`;
+      // Per-cell blocks so irregular shapes don't paint over cells they don't occupy;
+      // the name label centers across the bounding box.
+      el.innerHTML =
+        shapeCellsHtml(shape, CELL, GAP, `background:${def.color}44;border-color:${DrillDown.RARITY_COLORS[def.rarity]};`) +
+        dirArrowsHtml(def, p.rot) +
+        `<span class="placed-name">${def.name}</span>`;
+
+      // Zone-cell feedback: glow parts sitting on amplified cells, warn on unstable ones.
+      for (const [dr, dc] of shape) {
+        const m = (grid.mods || {})[(p.row + dr) + ',' + (p.col + dc)];
+        if (m === 'amplified') el.classList.add('amped');
+        else if (m === 'unstable') el.classList.add('destabilized');
+      }
 
       // Tooltip on placed parts
       el.addEventListener('mouseenter', (e) => { showTooltip(p.id, e); });
@@ -757,35 +839,15 @@ DrillDown.UI = (() => {
         e.stopPropagation();
         if (e.type === 'touchstart' && e.cancelable) e.preventDefault();
         Eng.removePart(grid, pid);
-        startDrag(p.id, p.rotated, pid, e);
+        startDrag(p.id, p.rot, pid, e);
+        // Remember where it came from so a mere click (no drag) restores it in place.
+        if (dragState) dragState.origPos = { row: p.row, col: p.col, rot: p.rot };
       };
       el.addEventListener('mousedown', onPartDown);
       el.addEventListener('touchstart', onPartDown, { passive: false });
 
-      el.addEventListener('dblclick', (e) => {
-        e.stopPropagation();
-        Eng.removePart(grid, pid);
-        p.rotated = !p.rotated;
-        const shape2 = p.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
-        let reOk = true;
-        for (const [dr, dc] of shape2) {
-          const rr = p.row + dr, cc = p.col + dc;
-          if (rr < 0 || rr >= grid.rows || cc < 0 || cc >= grid.cols || grid.cells[rr][cc] !== null) {
-            reOk = false; break;
-          }
-        }
-        if (reOk) {
-          Eng.placePart(grid, p.id, p.row, p.col, p.rotated);
-        } else {
-          p.rotated = !p.rotated;
-          const shapeOrig = def.shape;
-          grid.placed[pid] = p;
-          for (const [dr, dc] of shapeOrig) {
-            grid.cells[p.row + dr][p.col + dc] = pid;
-          }
-        }
-        DrillDown.Game.updateWorkshop();
-      });
+      // (In-place rotation is handled by the double-tap detection in endDrag — a native
+      // dblclick listener would be lost in the re-render between the two clicks.)
 
       gridCont.appendChild(el);
 
@@ -800,18 +862,9 @@ DrillDown.UI = (() => {
     const syn = Eng.gridSynergies(grid);
     syn.synergizedPids.forEach(pid => gridCont.querySelector(`.placed-part[data-pid="${pid}"]`)?.classList.add('synergy-active'));
     syn.ampedPids.forEach(pid => gridCont.querySelector(`.placed-part[data-pid="${pid}"]`)?.classList.add('amped'));
+    syn.dampedPids?.forEach(pid => gridCont.querySelector(`.placed-part[data-pid="${pid}"]`)?.classList.add('destabilized'));
 
-    const expandBtn = document.getElementById('btn-expand');
-    if (expandBtn) {
-      expandBtn.onclick = () => {
-        if (gs.gold >= expandCost) {
-          gs.gold -= expandCost;
-          if (grid.rows <= grid.cols) Eng.expandGrid(grid, 1, 0);
-          else Eng.expandGrid(grid, 0, 1);
-          DrillDown.Game.updateWorkshop();
-        }
-      };
-    }
+    document.getElementById('btn-rig-bay').onclick = () => renderRigBay();
 
     const clearBtn = document.getElementById('btn-clear-grid');
     if (clearBtn) {
@@ -949,6 +1002,120 @@ DrillDown.UI = (() => {
     };
 
     document.getElementById('btn-shop-close').onclick = () => {
+      overlay.classList.remove('active');
+      DrillDown.Game.updateWorkshop();
+    };
+  }
+
+  // -- Rig Bay: buy & swap chassis --
+  // Chassis are sidegrades, not upgrades: each frame suits a different build (hot
+  // drills, hauling, tanking, amp stacking...). Owned frames swap freely; swapping
+  // returns all placed parts to inventory.
+  function renderRigBay() {
+    const gs = DrillDown.Game.state;
+    if (!gs.ownedChassis) gs.ownedChassis = ['scrap_frame'];
+    const overlay = document.getElementById('rig-overlay');
+    overlay.classList.add('active');
+    const cont = overlay.querySelector('.rig-content');
+
+    const STAT_ICONS = { drillPower: '⛏', heatGen: '🌡', cooling: '❄', hp: '❤', armor: '🛡', cargo: '📦', speed: '⚡', detect: '📡' };
+    const fmtStats = (st) => {
+      const parts = Object.entries(st || {}).map(([k, v]) => {
+        const bad = v < 0 || k === 'heatGen';
+        return `<span class="${bad ? 'rig-stat-bad' : 'rig-stat-good'}">${STAT_ICONS[k] || k} ${v > 0 ? '+' : ''}${v}</span>`;
+      });
+      return parts.length ? parts.join(' ') : '<span class="rig-stat-none">no innate stats</span>';
+    };
+    const miniGrid = (def) => {
+      let cells = '';
+      for (let r = 0; r < def.rows; r++) {
+        for (let c = 0; c < def.cols; c++) {
+          if (def.mask && (!def.mask[r] || def.mask[r][c] !== 'X')) {
+            cells += '<span class="rig-mini-cell rig-mini-void"></span>';   // hull void
+            continue;
+          }
+          const m = DrillDown.CELL_MODS[(def.mods || {})[r + ',' + c]];
+          cells += m
+            ? `<span class="rig-mini-cell" style="background:${m.color}33;border-color:${m.color}88;color:${m.color}" title="${m.name}: ${m.desc}">${m.icon}</span>`
+            : '<span class="rig-mini-cell"></span>';
+        }
+      }
+      return `<div class="rig-mini" style="grid-template-columns:repeat(${def.cols}, 18px)">${cells}</div>`;
+    };
+    const modLegend = (def) => {
+      const counts = {};
+      for (const key in (def.mods || {})) counts[def.mods[key]] = (counts[def.mods[key]] || 0) + 1;
+      return Object.entries(counts).map(([mid, n]) => {
+        const m = DrillDown.CELL_MODS[mid];
+        return `<div class="rig-mod-row"><span style="color:${m.color}">${m.icon} ${m.name}${n > 1 ? ` ×${n}` : ''}</span> — ${m.desc}</div>`;
+      }).join('');
+    };
+
+    let cardsHtml = '';
+    for (const def of Object.values(DrillDown.CHASSIS)) {
+      const owned = gs.ownedChassis.includes(def.id);
+      const equipped = gs.grid.chassis === def.id;
+      const locked = (def.requires || 0) > (gs.bestDepth || 0);
+      const afford = gs.gold >= def.cost;
+      let action;
+      if (equipped)   action = `<button class="btn btn-small btn-secondary" disabled>✔ Equipped</button>`;
+      else if (owned) action = `<button class="btn btn-small btn-primary" data-equip="${def.id}">Equip</button>`;
+      else if (locked) action = `<button class="btn btn-small btn-secondary" disabled>🔒 Reach depth ${def.requires}</button>`;
+      else action = `<button class="btn btn-small ${afford ? 'btn-primary' : 'btn-secondary'}" data-buy="${def.id}" ${afford ? '' : 'disabled'}>Buy & Equip — ${def.cost}g</button>`;
+      cardsHtml += `
+        <div class="rig-card ${equipped ? 'equipped' : ''} ${locked && !owned ? 'locked' : ''}" style="border-top: 2px solid ${def.color}">
+          <div class="rig-card-head">
+            <span class="rig-card-name" style="color:${def.color}">${def.name}</span>
+            <span class="rig-card-size">${def.rows}×${def.cols}</span>
+          </div>
+          ${miniGrid(def)}
+          <div class="rig-card-stats">${fmtStats(def.stats)}</div>
+          ${modLegend(def)}
+          <div class="rig-card-desc">${def.desc}</div>
+          <div class="rig-card-action">${action}</div>
+        </div>`;
+    }
+
+    cont.innerHTML = `<h2>🏗 Rig Bay</h2>
+      <div style="margin-bottom:6px;color:#888;font-size:13px;">💰 Gold: <strong style="color:#f5a623">${gs.gold}g</strong> · Best Depth: <strong style="color:#74b9ff">${gs.bestDepth || 0}</strong></div>
+      <div style="margin-bottom:12px;color:#666;font-size:12px;">Frames are sidegrades — pick the one that fits your build. Owned frames swap freely between runs; swapping returns placed parts to your inventory.</div>
+      <div class="rig-cards">${cardsHtml}</div>
+      <div style="margin-top:14px;"><button class="btn btn-secondary" id="btn-rig-close">Close</button></div>
+    `;
+
+    const doSwap = (id) => {
+      const res = Eng.swapChassis(gs, id);
+      if (!res.ok) return;
+      A?.loot?.();
+      toast(`🏗 Equipped <b>${DrillDown.CHASSIS[id].name}</b>${res.returned ? ` · ${res.returned} part${res.returned > 1 ? 's' : ''} returned to inventory` : ''}`, 'rare');
+      Eng.save(gs);
+      renderRigBay();
+      DrillDown.Game.updateWorkshop();
+    };
+    const confirmSwap = (id, buyFirst) => {
+      const def = DrillDown.CHASSIS[id];
+      const hasParts = Object.keys(gs.grid.placed).length > 0;
+      const go = () => {
+        if (buyFirst) {
+          const b = Eng.buyChassis(gs, id);
+          if (!b.ok) { toast(b.reason === 'gold' ? 'Not enough gold.' : 'Cannot buy that chassis yet.', 'warn'); return; }
+        }
+        doSwap(id);
+      };
+      if (hasParts || buyFirst) {
+        confirmModal({
+          title: buyFirst ? `Buy ${def.name} for ${def.cost}g?` : `Equip ${def.name}?`,
+          body: hasParts ? 'All parts on your current rig will return to your inventory.' : (buyFirst ? 'It becomes yours permanently — swap back any time.' : ''),
+          confirmLabel: buyFirst ? 'Buy & Equip' : 'Equip',
+          onConfirm: go
+        });
+      } else {
+        go();
+      }
+    };
+    cont.querySelectorAll('[data-equip]').forEach(btn => btn.onclick = () => confirmSwap(btn.dataset.equip, false));
+    cont.querySelectorAll('[data-buy]').forEach(btn => btn.onclick = () => confirmSwap(btn.dataset.buy, true));
+    document.getElementById('btn-rig-close').onclick = () => {
       overlay.classList.remove('active');
       DrillDown.Game.updateWorkshop();
     };
@@ -1210,9 +1377,16 @@ DrillDown.UI = (() => {
         </div>
         <div class="help-section">
           <h3>🗺️ Grid & Placement</h3>
-          <p>Parts have shapes (1×1, 1×2, 2×2, L-shape). Fit them together like Tetris.</p>
-          <p><b>Drag</b> from inventory to place. Press <b>R</b> to <b>rotate</b> — while dragging, or while just hovering a part in your inventory/shop (or <b>hold</b> your finger still on touch while dragging).<br>
-          <b>Right-click or Escape</b> to cancel a drag. <b>Expand</b> the grid for more room.</p>
+          <p>Parts come in all the Tetris shapes and beyond — bars, squares, <b>T / S / Z / L / J</b> pieces, U-shaped claws, even a curling scorpion tail. Fit them together like Tetris.</p>
+          <p><b>Mega parts</b> (3×3 and bigger) pack huge stats with real trade-offs — they eat most of a rig. Some megas are <b>directional</b>: the <span style="color:#ff5e3a">Blast Furnace</span> boosts parts touching its feed side (<span style="color:#39ff14">▲</span>) and scorches parts on its exhaust side (<span style="color:#ff4136">▼</span>); the <span style="color:#0984e3">Cryo Cascade</span> pours its boost off one edge. The arrows rotate with the part — <b>facing is a placement decision</b>. The unique <span style="color:#fdcb6e">Crucible Ring</span> is hollow: the part nested in its heart gains +50%.</p>
+          <p><b>Drag</b> from inventory to place. Press <b>R</b> to <b>rotate</b> a quarter-turn — press again to cycle through all 4 orientations (while dragging, or while hovering a part in your inventory/shop; on touch, <b>hold</b> your finger still while dragging). <b>Double-click</b> a placed part to spin it in place.<br>
+          <b>Right-click or Escape</b> to cancel a drag.</p>
+        </div>
+        <div class="help-section">
+          <h3>🏗 Chassis & Zone Cells</h3>
+          <p>Your grid <b>is</b> a chassis — and it's swappable. Open the <b>Rig Bay</b> to buy new frames. They're <b>sidegrades, not upgrades</b>: each has its own footprint and innate stats (a fast slim scout, a slow cargo barge, an armored tower...), so different frames suit different builds. Some hulls are <b>irregular</b> — the T-shaped Hammerhead, the cut-corner Star Fort, the clawed Scorpion — with dark <b>structural voids</b> where nothing can be placed. You keep every chassis you buy and can swap freely between runs — placed parts just return to your inventory.</p>
+          <p><b>Zone cells</b> are marked squares on a chassis that modify whatever part covers them, <em>per covered cell</em>: <span style="color:#74b9ff">❄ Vented</span> +2 cooling, <span style="color:#e67e22">⚡ Conductive</span> +2 drill, <span style="color:#a0a0a0">🛡 Reinforced</span> +1 armor, <span style="color:#55efc4">📦 Cargo Bay</span> +3 cargo, <span style="color:#a29bfe">📡 Sensor</span> +4 detect. <span style="color:#ffb000">◆ Amplified</span> cells boost the covering part's primary stat by +12% each — park your best part there. <span style="color:#ff4136">▲ Unstable</span> cells <b>weaken</b> it by −15% each: leave them empty or cover them with expendable filler. Empty zone cells do nothing — placement is the puzzle.</p>
+          <p>Deeper frames unlock with your <b>best depth</b> record (Surveyor Web at 75, Reactor Cradle at 150, Singularity Lattice at 300).</p>
         </div>
         <div class="help-section">
           <h3>🏪 Shop & Economy</h3>
@@ -1281,7 +1455,7 @@ DrillDown.UI = (() => {
   }
 
   return {
-    showScreen, renderTitle, renderWorkshop, renderShop, renderDrill,
+    showScreen, renderTitle, renderWorkshop, renderShop, renderRigBay, renderDrill,
     createPartElement, initTooltip, cancelDrag, isDragging, rotateDrag, rotateHovered
   };
 })();

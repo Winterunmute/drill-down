@@ -1,6 +1,28 @@
 DrillDown.Engine = (() => {
   const P = DrillDown.PARTS;
 
+  // -- Shapes & rotation --
+  // rot counts quarter-turns clockwise (0–3). Offsets are re-normalized after rotating
+  // so the shape's bounding box always starts at (0,0) — placement anchors stay stable.
+  // A boolean `rot` from an old save coerces to 0/1, which matches the legacy transpose
+  // for every rectangular shape.
+  function rotateShape(shape, rot) {
+    rot = ((rot % 4) + 4) % 4;
+    let pts = shape;
+    for (let i = 0; i < rot; i++) pts = pts.map(([r, c]) => [c, -r]);
+    if (rot === 0) return pts;
+    const minR = Math.min(...pts.map(p => p[0]));
+    const minC = Math.min(...pts.map(p => p[1]));
+    return pts.map(([r, c]) => [r - minR, c - minC]);
+  }
+
+  // Resolve a part's shape at a rotation. Accepts a part id or a part def.
+  function shapeFor(part, rot) {
+    const def = typeof part === 'string' ? P[part] : part;
+    if (!def) return [];
+    return rotateShape(def.shape, +rot || 0);
+  }
+
   // -- Grid --
   function createGrid(rows, cols) {
     const cells = [];
@@ -13,37 +35,59 @@ DrillDown.Engine = (() => {
     return { rows, cols, cells, placed: {} };
   }
 
+  // Build a fresh grid from a chassis definition (footprint + zone-cell mods). The
+  // grid carries its chassis id and a copy of the mod map so saves stay self-contained.
+  function createChassisGrid(chassisId) {
+    const def = DrillDown.CHASSIS[chassisId] || DrillDown.CHASSIS.scrap_frame;
+    const grid = createGrid(def.rows, def.cols);
+    grid.chassis = def.id;
+    grid.mods = { ...(def.mods || {}) };
+    // Irregular hull: any non-'X' mask cell is a structural void — unusable, unplaceable.
+    grid.voids = {};
+    if (def.mask) {
+      def.mask.forEach((rowStr, r) => {
+        for (let c = 0; c < rowStr.length; c++) {
+          if (rowStr[c] !== 'X') grid.voids[r + ',' + c] = true;
+        }
+      });
+    }
+    return grid;
+  }
+
   function cloneGrid(grid) {
     const g = createGrid(grid.rows, grid.cols);
+    g.chassis = grid.chassis;
+    g.mods = { ...(grid.mods || {}) };
+    g.voids = { ...(grid.voids || {}) };
     for (const pid in grid.placed) {
       const p = grid.placed[pid];
       g.placed[pid] = { ...p };
-      for (const [dr, dc] of P[p.id].shape) {
+      for (const [dr, dc] of shapeFor(p.id, p.rot)) {
         g.cells[p.row + dr][p.col + dc] = pid;
       }
     }
     return g;
   }
 
-  function canPlace(grid, partId, row, col, rotated) {
+  function canPlace(grid, partId, row, col, rot) {
     const def = P[partId];
     if (!def) return false;
-    const shape = rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
-    for (const [dr, dc] of shape) {
+    for (const [dr, dc] of shapeFor(def, rot)) {
       const r = row + dr, c = col + dc;
       if (r < 0 || r >= grid.rows || c < 0 || c >= grid.cols) return false;
+      if (grid.voids && grid.voids[r + ',' + c]) return false;
       if (grid.cells[r][c] !== null) return false;
     }
     return true;
   }
 
-  function placePart(grid, partId, row, col, rotated) {
-    if (!canPlace(grid, partId, row, col, rotated)) return false;
-    const pid = partId + '_' + Date.now() + Math.random().toString(36).slice(2,6);
-    const def = P[partId];
-    const shape = rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
-    grid.placed[pid] = { id: partId, row, col, rotated, pid };
-    for (const [dr, dc] of shape) {
+  // `forcePid` restores a part under its existing instance id (used when a click on a
+  // placed part turns out not to be a drag — the part goes back exactly as it was).
+  function placePart(grid, partId, row, col, rot, forcePid) {
+    if (!canPlace(grid, partId, row, col, rot)) return false;
+    const pid = forcePid || partId + '_' + Date.now() + Math.random().toString(36).slice(2,6);
+    grid.placed[pid] = { id: partId, row, col, rot: (+rot || 0) % 4, pid };
+    for (const [dr, dc] of shapeFor(partId, rot)) {
       grid.cells[row + dr][col + dc] = pid;
     }
     return pid;
@@ -52,9 +96,7 @@ DrillDown.Engine = (() => {
   function removePart(grid, pid) {
     const p = grid.placed[pid];
     if (!p) return null;
-    const def = P[p.id];
-    const shape = p.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
-    for (const [dr, dc] of shape) {
+    for (const [dr, dc] of shapeFor(p.id, p.rot)) {
       grid.cells[p.row + dr][p.col + dc] = null;
     }
     delete grid.placed[pid];
@@ -111,6 +153,42 @@ DrillDown.Engine = (() => {
     return Math.round(cap.t + cap.k * Math.log(1 + (raw - cap.t) / cap.k));
   }
 
+  // -- Directional & hollow-part helpers --
+  const SIDE_VECS = { up: [-1, 0], right: [0, 1], down: [1, 0], left: [0, -1] };
+  const SIDE_ORDER = ['up', 'right', 'down', 'left'];
+  // A side declared in the part's unrotated frame, turned by `rot` quarter-turns CW —
+  // matches rotateShape, so a Blast Furnace's feed side follows the part around.
+  function rotateSide(side, rot) {
+    const i = SIDE_ORDER.indexOf(side);
+    if (i < 0) return side;
+    return SIDE_ORDER[(i + ((+rot || 0) % 4) + 4) % 4];
+  }
+  // Cells inside a shape's bounding box that the shape does NOT occupy — the hollow of
+  // a ring part. Offsets are in the same rotated frame as shapeFor.
+  function shapeHoles(def, rot) {
+    const shape = shapeFor(def, rot);
+    const occupied = new Set(shape.map(([r, c]) => r + ',' + c));
+    const w = Math.max(...shape.map(([r, c]) => c)) + 1;
+    const h = Math.max(...shape.map(([r, c]) => r)) + 1;
+    const holes = [];
+    for (let r = 0; r < h; r++)
+      for (let c = 0; c < w; c++)
+        if (!occupied.has(r + ',' + c)) holes.push([r, c]);
+    return holes;
+  }
+
+  // A part's primary stat: its largest positive stat, ignoring heatGen (a cost, not a
+  // benefit). Used by amplified/unstable zone cells. Cores (empty stats) return null —
+  // their amp field isn't a stat, so zone cells can't scale them.
+  function partPrimary(def) {
+    let best = null, bestV = 0;
+    for (const k in def.stats) {
+      if (k === 'heatGen') continue;
+      if (def.stats[k] > bestV) { bestV = def.stats[k]; best = k; }
+    }
+    return best;
+  }
+
   function computeStats(grid) {
     const stats = { drillPower: 0, heatGen: 0, cooling: 0, hp: 20, armor: 0, cargo: 4, speed: 1.0, detect: 0 };
     for (const pid in grid.placed) {
@@ -132,7 +210,7 @@ DrillDown.Engine = (() => {
     for (const pid in grid.placed) {
       const p = grid.placed[pid];
       const def = P[p.id];
-      const shape = p.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
+      const shape = shapeFor(def, p.rot);
       for (const [dr, dc] of shape) {
         const r = p.row + dr, c = p.col + dc;
         const neighbors = getNeighbors(grid, r, c);
@@ -161,9 +239,11 @@ DrillDown.Engine = (() => {
     for (const pid in grid.placed) {
       const p = grid.placed[pid];
       const def = P[p.id];
-      if (!def || def.type !== 'core') continue;
-      const amp = def.amp || 0.25;
-      const shape = p.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
+      // Only amp-cores radiate omnidirectionally; cores without `amp` (e.g. the
+      // nest-amp Crucible Ring) have their own mechanics below.
+      if (!def || def.type !== 'core' || !def.amp) continue;
+      const amp = def.amp;
+      const shape = shapeFor(def, p.rot);
       const seen = new Set();
       for (const [dr, dc] of shape) {
         for (const nid of getNeighbors(grid, p.row + dr, p.col + dc)) {
@@ -173,6 +253,94 @@ DrillDown.Engine = (() => {
           if (!ndef) continue;
           const key = primaryStat[ndef.type];
           if (key && ndef.stats[key]) stats[key] += Math.round(ndef.stats[key] * amp);
+        }
+      }
+    }
+
+    // -- Directional parts: affect only neighbors touching a specific side --
+    // Sides are declared in the part's unrotated frame and rotate with it, so facing is
+    // a placement decision. Positive amp boosts the neighbor's primary stat, negative
+    // scorches it; like zone cells, an effect never rounds to nothing.
+    for (const pid in grid.placed) {
+      const p = grid.placed[pid];
+      const def = P[p.id];
+      if (!def || !def.dirEffects) continue;
+      const shape = shapeFor(def, p.rot);
+      for (const eff of def.dirEffects) {
+        const [vr, vc] = SIDE_VECS[rotateSide(eff.side, p.rot)];
+        const seen = new Set();
+        for (const [dr, dc] of shape) {
+          const r = p.row + dr + vr, c = p.col + dc + vc;
+          if (r < 0 || r >= grid.rows || c < 0 || c >= grid.cols) continue;
+          const nid = grid.cells[r][c];
+          if (!nid || nid === pid || seen.has(nid)) continue;
+          seen.add(nid);
+          const ndef = P[grid.placed[nid].id];
+          if (!ndef) continue;
+          const key = partPrimary(ndef);
+          if (key && ndef.stats[key] > 0) {
+            let delta = ndef.stats[key] * eff.amp;
+            if (key === 'speed') delta = Math.round(delta * 10) / 10 || (eff.amp > 0 ? 0.1 : -0.1);
+            else delta = Math.round(delta) || (eff.amp > 0 ? 1 : -1);
+            stats[key] += delta;
+          }
+        }
+      }
+    }
+
+    // -- Nest amp (hollow parts): amplify whatever sits inside the shape's holes --
+    // e.g. the Crucible Ring's 3×3 ring boosts the part occupying its center cell.
+    for (const pid in grid.placed) {
+      const p = grid.placed[pid];
+      const def = P[p.id];
+      if (!def || !def.nestAmp) continue;
+      const seen = new Set();
+      for (const [hr, hc] of shapeHoles(def, p.rot)) {
+        const r = p.row + hr, c = p.col + hc;
+        if (r < 0 || r >= grid.rows || c < 0 || c >= grid.cols) continue;
+        const nid = grid.cells[r][c];
+        if (!nid || nid === pid || seen.has(nid)) continue;
+        seen.add(nid);
+        const ndef = P[grid.placed[nid].id];
+        if (!ndef) continue;
+        const key = partPrimary(ndef);
+        if (key && ndef.stats[key] > 0) {
+          const delta = ndef.stats[key] * def.nestAmp;
+          stats[key] += key === 'speed' ? Math.max(0.1, Math.round(delta * 10) / 10) : Math.max(1, Math.round(delta));
+        }
+      }
+    }
+
+    // -- Chassis: innate stats + zone-cell modifiers --
+    // Innate stats stack on top of parts (may include trade-offs like -speed or heatGen).
+    // Zone cells affect only the part covering them, per covered cell: flat mods add to a
+    // stat; amp mods (amplified/unstable) scale the part's primary stat from its base value.
+    const chassisDef = grid.chassis && DrillDown.CHASSIS[grid.chassis];
+    if (chassisDef && chassisDef.stats) {
+      for (const k in chassisDef.stats) {
+        if (stats[k] !== undefined) stats[k] += chassisDef.stats[k];
+      }
+    }
+    const cellMods = grid.mods || {};
+    for (const pid in grid.placed) {
+      const p = grid.placed[pid];
+      const def = P[p.id];
+      if (!def) continue;
+      const shape = shapeFor(def, p.rot);
+      for (const [dr, dc] of shape) {
+        const mod = DrillDown.CELL_MODS[cellMods[(p.row + dr) + ',' + (p.col + dc)]];
+        if (!mod) continue;
+        if (mod.stat) {
+          stats[mod.stat] += mod.amount;
+        } else if (mod.amp) {
+          const key = partPrimary(def);
+          if (key && def.stats[key] > 0) {
+            // Never round to nothing: a zone cell always moves the stat at least one notch.
+            let delta = def.stats[key] * mod.amp;
+            if (key === 'speed') delta = Math.round(delta * 10) / 10 || (mod.amp > 0 ? 0.1 : -0.1);
+            else delta = Math.round(delta) || (mod.amp > 0 ? 1 : -1);
+            stats[key] += delta;
+          }
         }
       }
     }
@@ -316,7 +484,7 @@ DrillDown.Engine = (() => {
       const p = grid.placed[pid];
       const def = P[p.id];
       if (!def) continue;
-      const shape = p.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
+      const shape = shapeFor(def, p.rot);
       for (const [dr, dc] of shape) {
         for (const nid of getNeighbors(grid, p.row + dr, p.col + dc)) {
           if (nid === pid) continue;
@@ -330,11 +498,12 @@ DrillDown.Engine = (() => {
       }
     }
     const primaryStat = { drill: 'drillPower', cooling: 'cooling', defense: 'hp' };
+    const dampedPids = new Set();
     for (const pid in grid.placed) {
       const p = grid.placed[pid];
       const def = P[p.id];
-      if (!def || def.type !== 'core') continue;
-      const shape = p.rotated ? def.shape.map(([r,c]) => [c,r]) : def.shape;
+      if (!def || def.type !== 'core' || !def.amp) continue;
+      const shape = shapeFor(def, p.rot);
       const seen = new Set();
       let amped = 0;
       for (const [dr, dc] of shape) {
@@ -347,9 +516,59 @@ DrillDown.Engine = (() => {
           if (key && ndef.stats[key]) { ampedPids.add(nid); synergizedPids.add(pid); amped++; }
         }
       }
-      if (amped > 0) bump(`Reactor Amp +${Math.round((def.amp || 0.25) * 100)}%`, `×${amped}`);
+      if (amped > 0) bump(`Reactor Amp +${Math.round(def.amp * 100)}%`, `×${amped}`);
     }
-    return { synergies: Object.values(counts), synergizedPids, ampedPids };
+    // Directional parts (Blast Furnace, Cryo Cascade...): tally boosted / scorched
+    // neighbors per side so the panel and highlights match computeStats exactly.
+    for (const pid in grid.placed) {
+      const p = grid.placed[pid];
+      const def = P[p.id];
+      if (!def || !def.dirEffects) continue;
+      const shape = shapeFor(def, p.rot);
+      for (const eff of def.dirEffects) {
+        const [vr, vc] = SIDE_VECS[rotateSide(eff.side, p.rot)];
+        const seen = new Set();
+        let hit = 0;
+        for (const [dr, dc] of shape) {
+          const r = p.row + dr + vr, c = p.col + dc + vc;
+          if (r < 0 || r >= grid.rows || c < 0 || c >= grid.cols) continue;
+          const nid = grid.cells[r][c];
+          if (!nid || nid === pid || seen.has(nid)) continue;
+          seen.add(nid);
+          const ndef = P[grid.placed[nid].id];
+          if (!ndef || !partPrimary(ndef)) continue;
+          (eff.amp > 0 ? ampedPids : dampedPids).add(nid);
+          synergizedPids.add(pid);
+          hit++;
+        }
+        if (hit > 0) {
+          const pct = Math.round(Math.abs(eff.amp) * 100);
+          bump(eff.amp > 0 ? `Directional Feed +${pct}%` : `Exhaust Scorch −${pct}%`, `×${hit}`);
+        }
+      }
+    }
+    // Nest amps (Crucible Ring): the part cradled in the hollow.
+    for (const pid in grid.placed) {
+      const p = grid.placed[pid];
+      const def = P[p.id];
+      if (!def || !def.nestAmp) continue;
+      const seen = new Set();
+      let nested = 0;
+      for (const [hr, hc] of shapeHoles(def, p.rot)) {
+        const r = p.row + hr, c = p.col + hc;
+        if (r < 0 || r >= grid.rows || c < 0 || c >= grid.cols) continue;
+        const nid = grid.cells[r][c];
+        if (!nid || nid === pid || seen.has(nid)) continue;
+        seen.add(nid);
+        const ndef = P[grid.placed[nid].id];
+        if (!ndef || !partPrimary(ndef)) continue;
+        ampedPids.add(nid);
+        synergizedPids.add(pid);
+        nested++;
+      }
+      if (nested > 0) bump(`Nested Amp +${Math.round(def.nestAmp * 100)}%`, `×${nested}`);
+    }
+    return { synergies: Object.values(counts), synergizedPids, ampedPids, dampedPids };
   }
 
   // -- Simulation --
@@ -632,6 +851,34 @@ DrillDown.Engine = (() => {
     return { ok: true, upgradedId: plan.resultId, merges: plan.merges, cost: plan.totalCost };
   }
 
+  // -- Chassis (Rig Bay) --
+  // Chassis are persistent purchases: buy once (gold + best-depth gate), own forever,
+  // swap freely between runs. Swapping replaces the grid with a fresh one for the new
+  // frame and returns every placed part to inventory.
+  function buyChassis(state, chassisId) {
+    const def = DrillDown.CHASSIS[chassisId];
+    if (!def) return { ok: false, reason: 'unknown' };
+    if (!state.ownedChassis) state.ownedChassis = ['scrap_frame'];
+    if (state.ownedChassis.includes(chassisId)) return { ok: false, reason: 'owned' };
+    if ((def.requires || 0) > (state.bestDepth || 0)) return { ok: false, reason: 'depth' };
+    if (state.gold < def.cost) return { ok: false, reason: 'gold' };
+    state.gold -= def.cost;
+    state.ownedChassis.push(chassisId);
+    return { ok: true };
+  }
+
+  function swapChassis(state, chassisId) {
+    if (!DrillDown.CHASSIS[chassisId]) return { ok: false };
+    if (!(state.ownedChassis || []).includes(chassisId)) return { ok: false };
+    let returned = 0;
+    for (const pid of Object.keys(state.grid.placed)) {
+      const p = removePart(state.grid, pid);
+      if (p) { state.inventory.push(p.id); returned++; }
+    }
+    state.grid = createChassisGrid(chassisId);
+    return { ok: true, returned };
+  }
+
   // -- Shop --
   // Flat premium charged for the (otherwise craft-only) unique parts that appear in
   // the shop at extreme depths — a gold shortcut around the fragment grind.
@@ -683,7 +930,7 @@ DrillDown.Engine = (() => {
   // normalizes any older (or current) save up to this shape, so adding a new field
   // never breaks an existing player's save. Keep the field defaults below in sync
   // with defaultState() in main.js.
-  const SAVE_VERSION = 2;
+  const SAVE_VERSION = 4;
   const SAVE_KEY = 'drill_down_save';
 
   function save(state) {
@@ -698,6 +945,7 @@ DrillDown.Engine = (() => {
         returnPolicy: state.returnPolicy || { cargoFull: true, hpPct: 0.25 },
         milestones: state.milestones || [],
         shop: state.shop || [],
+        ownedChassis: state.ownedChassis || ['scrap_frame'],
         runNumber: state.runNumber,
         lastDepth: state.lastDepth,
         bestDepth: state.bestDepth,
@@ -737,18 +985,64 @@ DrillDown.Engine = (() => {
     // Shop wasn't persisted before v2 — generate one so the shop never opens empty/undefined.
     if (!Array.isArray(data.shop)) data.shop = generateShop(data.runNumber, data.bestDepth);
 
+    // Chassis (v3): pre-chassis saves keep their grid as-is (including any old paid
+    // expansions) but get the starter chassis identity and no zone cells. Owned list
+    // always contains the starter and whatever is currently equipped.
+    if (!Array.isArray(data.ownedChassis)) data.ownedChassis = [];
+    data.ownedChassis = data.ownedChassis.filter(id => DrillDown.CHASSIS[id]);
+    if (!data.ownedChassis.includes('scrap_frame')) data.ownedChassis.unshift('scrap_frame');
+    if (!data.grid.chassis || !DrillDown.CHASSIS[data.grid.chassis]) {
+      data.grid.chassis = 'scrap_frame';
+      data.grid.mods = {};
+    }
+    if (!data.grid.mods || typeof data.grid.mods !== 'object') data.grid.mods = {};
+    for (const key of Object.keys(data.grid.mods)) {
+      const [r, c] = key.split(',').map(Number);
+      if (!DrillDown.CELL_MODS[data.grid.mods[key]] ||
+          isNaN(r) || isNaN(c) || r < 0 || r >= data.grid.rows || c < 0 || c >= data.grid.cols) {
+        delete data.grid.mods[key];
+      }
+    }
+    if (!data.ownedChassis.includes(data.grid.chassis)) data.ownedChassis.push(data.grid.chassis);
+
     // Drop anything referencing a part id that no longer exists in PARTS.
     data.inventory = data.inventory.filter(id => P[id]);
     data.shop = data.shop.filter(id => P[id]);
     for (const id of Object.keys(data.fragments)) if (!P[id]) delete data.fragments[id];
     for (const pid of Object.keys(data.grid.placed)) {
       const p = data.grid.placed[pid];
-      if (!p || !P[p.id]) {
+      if (!p || !P[p.id]) delete data.grid.placed[pid];
+    }
+
+    // Rotation & voids (v4): placed parts store `rot` (0–3 quarter-turns) instead of the
+    // old `rotated` transpose boolean, and grids may carry structural voids. Rebuild the
+    // cells array from `placed` under the new shape math; any part that no longer fits
+    // (footprint changed, or now over a void) returns to inventory instead of corrupting
+    // the grid.
+    if (!data.grid.voids || typeof data.grid.voids !== 'object') data.grid.voids = {};
+    for (const key of Object.keys(data.grid.voids)) {
+      const [r, c] = key.split(',').map(Number);
+      if (isNaN(r) || isNaN(c) || r < 0 || r >= data.grid.rows || c < 0 || c >= data.grid.cols) {
+        delete data.grid.voids[key];
+      }
+    }
+    data.grid.cells = [];
+    for (let r = 0; r < data.grid.rows; r++) data.grid.cells.push(new Array(data.grid.cols).fill(null));
+    for (const pid of Object.keys(data.grid.placed)) {
+      const p = data.grid.placed[pid];
+      p.rot = typeof p.rot === 'number' ? ((p.rot % 4) + 4) % 4 : (p.rotated ? 1 : 0);
+      delete p.rotated;
+      const shape = shapeFor(p.id, p.rot);
+      const fits = shape.every(([dr, dc]) => {
+        const r = p.row + dr, c = p.col + dc;
+        return r >= 0 && r < data.grid.rows && c >= 0 && c < data.grid.cols &&
+               !data.grid.voids[r + ',' + c] && data.grid.cells[r][c] === null;
+      });
+      if (fits) {
+        for (const [dr, dc] of shape) data.grid.cells[p.row + dr][p.col + dc] = pid;
+      } else {
         delete data.grid.placed[pid];
-        const cells = data.grid.cells;
-        for (let r = 0; r < cells.length; r++)
-          for (let c = 0; c < cells[r].length; c++)
-            if (cells[r][c] === pid) cells[r][c] = null;
+        data.inventory.push(p.id);
       }
     }
 
@@ -768,7 +1062,9 @@ DrillDown.Engine = (() => {
   }
 
   return {
-    createGrid, cloneGrid, canPlace, placePart, removePart, getPartAt, expandGrid,
+    createGrid, createChassisGrid, cloneGrid, canPlace, placePart, removePart, getPartAt, expandGrid,
+    rotateShape, shapeFor, rotateSide, shapeHoles,
+    buyChassis, swapChassis,
     computeStats, rockHardness, getEvent, simulateRun,
     generateShop, shopCost, shopPlan, REROLL_COST,
     addFragment, recyclePart, RECYCLE_GOLD, RECYCLE_PROGRESS,

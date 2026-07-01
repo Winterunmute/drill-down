@@ -196,9 +196,11 @@ body::after {
 .grid-hover-ok { background: rgba(57, 255, 20, 0.22) !important; border-color: var(--phosphor) !important; box-shadow: inset 0 0 8px rgba(57, 255, 20, 0.4); }
 .grid-hover-bad { background: rgba(255, 65, 54, 0.22) !important; border-color: var(--danger) !important; box-shadow: inset 0 0 8px rgba(255, 65, 54, 0.4); }
 
+/* Placed parts render per-cell (.shape-cell children) so irregular shapes (T/S/L/U...)
+   only paint the cells they occupy; the container is an invisible bounding box that
+   carries the label, cursor, and event handlers. */
 .placed-part {
   position: absolute;
-  border: 1px solid;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -207,14 +209,21 @@ body::after {
   font-size: 14px;
   cursor: grab;
   z-index: 2;
-  box-shadow: inset 0 0 18px rgba(0,0,0,0.5);
-  transition: box-shadow 0.15s;
   text-shadow: 0 1px 3px rgba(0,0,0,0.9);
 }
-.placed-part:hover { box-shadow: inset 0 0 18px rgba(0,0,0,0.5), 0 0 14px currentColor; z-index: 3; }
-.placed-part.synergy-active { box-shadow: inset 0 0 18px rgba(0,0,0,0.5), 0 0 10px rgba(57, 255, 20, 0.5); }
-.placed-part.amped { box-shadow: inset 0 0 18px rgba(0,0,0,0.5), 0 0 14px rgba(255, 176, 0, 0.75); border-style: dashed; }
-.placed-name { font-size: 12px; opacity: 0.95; text-transform: uppercase; letter-spacing: 1px; text-align: center; padding: 0 2px; line-height: 1.2; }
+.shape-cell {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid;
+  pointer-events: none;
+}
+.placed-part .shape-cell { box-shadow: inset 0 0 18px rgba(0,0,0,0.5); transition: box-shadow 0.15s; }
+.placed-part:hover { z-index: 3; }
+.placed-part:hover .shape-cell { box-shadow: inset 0 0 18px rgba(0,0,0,0.5), 0 0 14px rgba(57, 255, 20, 0.4); }
+.placed-part.synergy-active .shape-cell { box-shadow: inset 0 0 18px rgba(0,0,0,0.5), 0 0 10px rgba(57, 255, 20, 0.5); }
+.placed-part.amped .shape-cell { box-shadow: inset 0 0 18px rgba(0,0,0,0.5), 0 0 14px rgba(255, 176, 0, 0.75); border-style: dashed; }
+.placed-part.destabilized .shape-cell { box-shadow: inset 0 0 18px rgba(0,0,0,0.5), 0 0 12px rgba(255, 65, 54, 0.6); border-style: dotted; }
+.placed-name { position: relative; z-index: 1; font-size: 12px; opacity: 0.95; text-transform: uppercase; letter-spacing: 1px; text-align: center; padding: 0 2px; line-height: 1.2; }
 
 /* Part cards (inventory / shop) */
 .part-card {
@@ -231,11 +240,11 @@ body::after {
   overflow: visible;
 }
 .part-card:hover { transform: scale(1.05); z-index: 10; box-shadow: var(--glow); }
+/* Shape silhouette drawn as .shape-cell blocks so irregular parts read at a glance. */
 .part-card-bg {
   position: absolute;
-  inset: 0;
-  opacity: 0.12;
-  border: 1px solid;
+  inset: 5px;
+  pointer-events: none;
 }
 .part-card-name { font-size: 11px; text-align: center; line-height: 1.2; position: relative; text-transform: uppercase; letter-spacing: 0.5px; color: var(--phosphor); }
 .part-card-rarity { font-size: 8px; text-transform: uppercase; letter-spacing: 1px; position: relative; }
@@ -410,20 +419,25 @@ body::after {
 .toast-line.toast-out { opacity: 0; transform: translateY(-8px); }
 
 /* Drag ghost */
+/* The ghost renders per-cell (.shape-cell) with a centered label overlay, so the drag
+   preview matches an irregular shape's real footprint. */
 .drag-ghost {
   position: fixed;
   pointer-events: none;
   z-index: 1000;
   opacity: 0.85;
-  border: 1px solid;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   font-size: 14px;
   text-transform: uppercase;
   letter-spacing: 1px;
   text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+}
+.drag-ghost .ghost-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 2px;
 }
 .drag-ghost .ghost-hint {
@@ -650,6 +664,91 @@ body::after {
 .shop-content h2 { font-family: "VT323", monospace; font-size: 28px; margin-bottom: 16px; color: var(--amber); letter-spacing: 2px; }
 .shop-items { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
 
+/* Rig Bay overlay (chassis shop) */
+#rig-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(1, 7, 1, 0.85);
+  align-items: center;
+  justify-content: center;
+  z-index: 110;
+}
+#rig-overlay.active { display: flex; }
+.rig-content {
+  background: var(--bg-panel);
+  border: 1px solid var(--phosphor-dim);
+  box-shadow: 0 0 40px rgba(57, 255, 20, 0.12);
+  padding: 24px;
+  max-width: 900px;
+  width: min(900px, 95vw);
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.rig-content h2 { font-family: "VT323", monospace; font-size: 28px; margin-bottom: 12px; color: var(--amber); letter-spacing: 2px; }
+.rig-cards { display: flex; flex-wrap: wrap; gap: 12px; }
+.rig-card {
+  background: var(--bg-deep);
+  border: 1px solid var(--phosphor-faint);
+  padding: 12px;
+  width: 258px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.rig-card.equipped { border-color: var(--phosphor); box-shadow: 0 0 14px rgba(57, 255, 20, 0.25); }
+.rig-card.locked { opacity: 0.55; }
+.rig-card-head { display: flex; justify-content: space-between; align-items: baseline; }
+.rig-card-name { font-family: "VT323", monospace; font-size: 19px; letter-spacing: 1px; }
+.rig-card-size { font-size: 11px; color: var(--phosphor-dim); }
+.rig-mini { display: grid; gap: 2px; }
+.rig-mini-cell {
+  width: 18px; height: 18px;
+  border: 1px solid var(--phosphor-faint);
+  background: rgba(57, 255, 20, 0.03);
+  font-size: 11px; line-height: 17px; text-align: center;
+}
+.rig-card-stats { font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.rig-stat-good { color: var(--phosphor); }
+.rig-stat-bad { color: var(--danger); }
+.rig-stat-none { color: var(--phosphor-faint); font-style: italic; }
+.rig-mod-row { font-size: 11px; line-height: 1.4; color: var(--phosphor-dim); }
+.rig-card-desc { font-size: 11px; line-height: 1.5; color: var(--phosphor-dim); opacity: 0.8; flex: 1; }
+.rig-card-action { margin-top: 2px; }
+
+/* Directional-part edge arrows (boost / scorch sides; rotate with the part) */
+.dir-arrow {
+  position: absolute;
+  z-index: 2;
+  font-size: 13px;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 0 6px currentColor, 0 1px 3px rgba(0,0,0,0.9);
+}
+.dir-arrow.dir-boost { color: var(--phosphor); }
+.dir-arrow.dir-scorch { color: var(--danger); }
+.dir-arrow.dir-up    { top: 1px;    left: 50%; transform: translateX(-50%); }
+.dir-arrow.dir-down  { bottom: 1px; left: 50%; transform: translateX(-50%); }
+.dir-arrow.dir-left  { left: 2px;   top: 50%;  transform: translateY(-50%); }
+.dir-arrow.dir-right { right: 2px;  top: 50%;  transform: translateY(-50%); }
+
+/* Zone cells on the workshop grid */
+.grid-cell.cell-mod { background: rgba(255, 255, 255, 0.02); }
+/* Structural voids — holes in an irregular hull outline. */
+.grid-cell.cell-void {
+  background: rgba(0, 0, 0, 0.65);
+  border-color: rgba(57, 255, 20, 0.04);
+  box-shadow: none;
+}
+.rig-mini-cell.rig-mini-void { background: transparent; border-color: transparent; }
+.cell-mod-icon {
+  position: absolute;
+  top: 2px; right: 4px;
+  font-size: 12px;
+  opacity: 0.75;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+}
 /* Tooltip */
 .part-tooltip {
   position: fixed;

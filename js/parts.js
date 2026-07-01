@@ -333,6 +333,218 @@ DrillDown.PARTS = {
     emoji: '📡'
   },
 
+  // -- Irregular shapes (Tetris & beyond — T, S/Z, L/J, I4, U, W pentomino) --
+  t_bore: {
+    id: 't_bore',
+    name: 'T-Bore',
+    type: 'drill',
+    shape: [[0,0], [0,1], [0,2], [1,1]],   // T
+    stats: { drillPower: 14, heatGen: 8 },
+    rarity: 'uncommon',
+    cost: 100,
+    color: '#e67e22',
+    emoji: '⚙'
+  },
+  serpent_drill: {
+    id: 'serpent_drill',
+    name: 'Serpent Drill',
+    type: 'drill',
+    shape: [[0,1], [0,2], [1,0], [1,1]],   // S
+    stats: { drillPower: 19, heatGen: 11 },
+    rarity: 'rare',
+    cost: 190,
+    color: '#e74c3c',
+    emoji: '🐍'
+  },
+  rail_lance: {
+    id: 'rail_lance',
+    name: 'Rail Lance',
+    type: 'drill',
+    shape: [[0,0], [0,1], [0,2], [0,3]],   // I4
+    stats: { drillPower: 26, heatGen: 15 },
+    rarity: 'rare',
+    cost: 230,
+    color: '#e74c3c',
+    emoji: '🔥'
+  },
+  coolant_elbow: {
+    id: 'coolant_elbow',
+    name: 'Coolant Elbow',
+    type: 'cooling',
+    shape: [[0,0], [1,0], [2,0], [2,1]],   // L
+    stats: { cooling: 9 },
+    rarity: 'uncommon',
+    cost: 85,
+    color: '#0984e3',
+    emoji: '🧊'
+  },
+  zigzag_duct: {
+    id: 'zigzag_duct',
+    name: 'Zigzag Duct',
+    type: 'cooling',
+    shape: [[0,0], [0,1], [1,1], [1,2]],   // Z
+    stats: { cooling: 12 },
+    rarity: 'rare',
+    cost: 150,
+    color: '#0984e3',
+    emoji: '🌊'
+  },
+  girder_truss: {
+    id: 'girder_truss',
+    name: 'Girder Truss',
+    type: 'defense',
+    shape: [[0,0], [0,1], [0,2], [0,3]],   // I4
+    stats: { hp: 32, armor: 1 },
+    rarity: 'uncommon',
+    cost: 95,
+    color: '#636e72',
+    emoji: '🧱'
+  },
+  claw_shell: {
+    id: 'claw_shell',
+    name: 'Claw Shell',
+    type: 'defense',
+    shape: [[0,0], [0,2], [1,0], [1,1], [1,2]],   // U — cradles a 1×1 part in its notch
+    stats: { hp: 28, armor: 3 },
+    desc: 'Wraps around a small part — tuck a core or 1×1 into its notch for easy adjacency.',
+    rarity: 'rare',
+    cost: 165,
+    color: '#00b894',
+    emoji: '🦀'
+  },
+  crane_arm: {
+    id: 'crane_arm',
+    name: 'Crane Arm',
+    type: 'utility',
+    shape: [[0,1], [1,1], [2,0], [2,1]],   // J
+    stats: { cargo: 14, detect: 5 },
+    rarity: 'uncommon',
+    cost: 95,
+    color: '#55efc4',
+    emoji: '🏗'
+  },
+  scorpion_tail: {
+    id: 'scorpion_tail',
+    name: 'Scorpion Tail',
+    type: 'utility',
+    shape: [[0,0], [1,0], [1,1], [2,1], [2,2]],   // W pentomino — a curling stinger
+    stats: { speed: 0.4, detect: 12 },
+    desc: 'A segmented sensor-tail that snakes around other parts.',
+    rarity: 'rare',
+    cost: 175,
+    color: '#a29bfe',
+    emoji: '🦂'
+  },
+  nexus_core: {
+    id: 'nexus_core',
+    name: 'Nexus Core',
+    type: 'core',
+    shape: [[0,1], [1,0], [1,1], [1,2], [2,1]],   // plus — maximum adjacency reach
+    stats: {},
+    amp: 0.2,
+    desc: 'Amplifies adjacent drill / cooling / defense parts by +20%. Its cross shape touches more neighbors than any other core.',
+    rarity: 'rare',
+    cost: 260,
+    color: '#a55eea',
+    emoji: '✚'
+  },
+
+  // -- Mega parts (huge footprints, huge stats, real trade-offs) --
+  titan_excavator: {
+    id: 'titan_excavator',
+    name: 'Titan Excavator',
+    type: 'drill',
+    shape: [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2],[2,0],[2,1],[2,2]],   // 3×3
+    stats: { drillPower: 38, heatGen: 26, speed: -0.2 },
+    desc: 'A drilling rig the size of a house. Monstrous bite, monstrous heat, and its bulk drags on speed.',
+    rarity: 'rare',
+    cost: 420,
+    color: '#e74c3c',
+    emoji: '🏗'
+  },
+  glacier_block: {
+    id: 'glacier_block',
+    name: 'Glacier Block',
+    type: 'cooling',
+    shape: [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2],[2,0],[2,1],[2,2]],   // 3×3
+    stats: { cooling: 30, speed: -0.3 },
+    desc: 'A hauled slab of ancient ice. Immense cooling — and immense weight.',
+    rarity: 'rare',
+    cost: 380,
+    color: '#48dbfb',
+    emoji: '🧊'
+  },
+  citadel_block: {
+    id: 'citadel_block',
+    name: 'Citadel Block',
+    type: 'defense',
+    shape: [[0,0],[0,1],[0,2],[0,3],[1,0],[1,1],[1,2],[1,3]],   // 2×4
+    stats: { hp: 55, armor: 3, speed: -0.3 },
+    desc: 'A rolling fortress wall. Nothing gets through — or moves fast carrying it.',
+    rarity: 'rare',
+    cost: 400,
+    color: '#636e72',
+    emoji: '🏰'
+  },
+  colossus_vault: {
+    id: 'colossus_vault',
+    name: 'Colossus Vault',
+    type: 'utility',
+    shape: [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2],[2,0],[2,1],[2,2]],   // 3×3
+    stats: { cargo: 45, speed: -0.4 },
+    desc: 'A bank vault with treads. Cavernous hold; glacial pace.',
+    rarity: 'rare',
+    cost: 390,
+    color: '#55efc4',
+    emoji: '🏦'
+  },
+
+  // -- Directional megas (adjacency depends on WHICH side touches; rotates with the part) --
+  blast_furnace: {
+    id: 'blast_furnace',
+    name: 'Blast Furnace',
+    type: 'drill',
+    shape: [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2]],   // 2 rows × 3 cols
+    stats: { drillPower: 20, heatGen: 14 },
+    dirEffects: [
+      { side: 'up',   amp: 0.25 },
+      { side: 'down', amp: -0.15 }
+    ],
+    desc: 'Directional: parts touching its feed side (▲) gain +25% to their primary stat; parts on its exhaust side (▼) are scorched for −15%. The sides rotate with the part.',
+    rarity: 'rare',
+    cost: 450,
+    color: '#ff5e3a',
+    emoji: '🔥'
+  },
+  cryo_cascade: {
+    id: 'cryo_cascade',
+    name: 'Cryo Cascade',
+    type: 'cooling',
+    shape: [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1]],   // 3 rows × 2 cols
+    stats: { cooling: 16 },
+    dirEffects: [
+      { side: 'down', amp: 0.25 }
+    ],
+    desc: 'Directional: coolant pours off its lower edge (▼) — parts touching that side gain +25% to their primary stat. Rotate it to aim the flow.',
+    rarity: 'rare',
+    cost: 430,
+    color: '#0984e3',
+    emoji: '🌊'
+  },
+  crucible_ring: {
+    id: 'crucible_ring',
+    name: 'Crucible Ring',
+    type: 'core',
+    shape: [[0,0],[0,1],[0,2],[1,0],[1,2],[2,0],[2,1],[2,2]],   // 3×3 ring, hollow heart
+    stats: { heatGen: 6 },
+    nestAmp: 0.5,
+    desc: 'A ring of containment — the single part nested in its hollow heart gains +50% to its primary stat. The field bleeds heat into the rig.',
+    rarity: 'unique',
+    cost: 0,
+    color: '#fdcb6e',
+    emoji: '⭕'
+  },
+
   // -- Cores (amplify adjacent parts; no stats of their own) --
   flux_node: {
     id: 'flux_node',
@@ -486,12 +698,152 @@ DrillDown.PARTS = {
         desc: (base.desc ? base.desc + ' ' : '') + `${t.tier} tier — forged by combining two ${prev.name}.`
       };
       if (prev.amp) up.amp = Math.round((prev.amp + 0.15) * 100) / 100;   // cores amplify harder each tier
+      if (prev.dirEffects) up.dirEffects = prev.dirEffects.map(e => ({ ...e }));   // directional sides carry through tiers unchanged
+      if (prev.nestAmp) up.nestAmp = prev.nestAmp;
       DrillDown.PARTS[upId] = up;
       DrillDown.PARTS[prevId].upgradeTo = upId;
       prevId = upId;
     }
   }
 })();
+
+// -- Cell modifiers (chassis zone cells) --
+// A chassis can mark individual grid cells with a modifier. The effect applies per
+// covered cell to whatever part is placed over it (Engine.computeStats): flat mods add
+// `amount` to `stat`; amp mods scale the covering part's primary (largest positive)
+// stat by `amp`. Unoccupied modded cells do nothing — placement is the puzzle.
+DrillDown.CELL_MODS = {
+  vented:     { id: 'vented',     name: 'Vented',     icon: '❄', color: '#74b9ff', stat: 'cooling',    amount: 2, desc: '+2 cooling while a part covers this cell' },
+  conductive: { id: 'conductive', name: 'Conductive', icon: '⚡', color: '#e67e22', stat: 'drillPower', amount: 2, desc: '+2 drill power while a part covers this cell' },
+  reinforced: { id: 'reinforced', name: 'Reinforced', icon: '🛡', color: '#a0a0a0', stat: 'armor',      amount: 1, desc: '+1 armor while a part covers this cell' },
+  cargo_bay:  { id: 'cargo_bay',  name: 'Cargo Bay',  icon: '📦', color: '#55efc4', stat: 'cargo',      amount: 3, desc: '+3 cargo while a part covers this cell' },
+  sensor:     { id: 'sensor',     name: 'Sensor Node',icon: '📡', color: '#a29bfe', stat: 'detect',     amount: 4, desc: '+4 detect while a part covers this cell' },
+  amplified:  { id: 'amplified',  name: 'Amplified',  icon: '◆', color: '#ffb000', amp: 0.12,  desc: "+12% to the covering part's primary stat, per cell" },
+  unstable:   { id: 'unstable',   name: 'Unstable',   icon: '▲', color: '#ff4136', amp: -0.15, desc: "−15% to the covering part's primary stat, per cell — leave empty or cover with expendable parts" }
+};
+
+// -- Chassis (rig frames, bought in the Rig Bay) --
+// Sidegrades, not upgrades: each frame has its own footprint, innate stats (some with
+// trade-offs) and zone cells, suiting a different build. `mods` maps 'row,col' →
+// CELL_MODS id. `requires` gates the purchase behind a best-depth record. You own every
+// chassis you've bought and can swap freely between runs (placed parts return to
+// inventory on swap). An optional `mask` (array of strings, one char per cell, 'X' =
+// usable) carves an irregular hull outline — non-'X' cells are structural voids where
+// nothing can be placed. Mask dimensions must match rows/cols.
+DrillDown.CHASSIS = {
+  scrap_frame: {
+    id: 'scrap_frame', name: 'Scrap Frame', rows: 3, cols: 4, cost: 0,
+    stats: {}, mods: {},
+    color: '#d4a574',
+    desc: 'Standard-issue starter frame. No innate stats, no zone cells — a blank slate.'
+  },
+  venting_lattice: {
+    id: 'venting_lattice', name: 'Venting Lattice', rows: 3, cols: 4, cost: 200,
+    stats: { cooling: 3 },
+    mods: { '0,0': 'vented', '0,3': 'vented', '2,0': 'vented', '2,3': 'vented' },
+    color: '#74b9ff',
+    desc: 'Heat-dump frame for hot drill builds — innate cooling plus vented corner cells.'
+  },
+  drill_platform: {
+    id: 'drill_platform', name: 'Drill Platform', rows: 3, cols: 4, cost: 250,
+    stats: { drillPower: 3, heatGen: 2 },
+    mods: { '0,1': 'conductive', '1,1': 'conductive', '2,1': 'conductive' },
+    color: '#e67e22',
+    desc: 'Power-feed spine down one column boosts drills placed along it. Runs a little hot.'
+  },
+  slipstream: {
+    id: 'slipstream', name: 'Slipstream', rows: 2, cols: 6, cost: 280,
+    stats: { speed: 0.5 },
+    mods: { '0,5': 'sensor', '1,5': 'sensor' },
+    color: '#dfe6e9',
+    desc: 'Slim scout hull — fewer slots, innate speed, sensor nodes in the nose. Built for fast shallow-loot runs.'
+  },
+  hauler_barge: {
+    id: 'hauler_barge', name: 'Hauler Barge', rows: 3, cols: 5, cost: 300,
+    stats: { cargo: 6, speed: -0.1 },
+    mods: { '2,1': 'cargo_bay', '2,2': 'cargo_bay', '2,3': 'cargo_bay' },
+    color: '#55efc4',
+    desc: 'Wide freight frame with a cargo-bay keel. Heavy — drags on speed.'
+  },
+  bastion: {
+    id: 'bastion', name: 'Bastion', rows: 4, cols: 3, cost: 320,
+    stats: { hp: 15, speed: -0.2 },
+    mods: { '0,0': 'reinforced', '0,2': 'reinforced', '3,0': 'reinforced', '3,2': 'reinforced' },
+    color: '#a0a0a0',
+    desc: 'Tall armored tower — innate HP and reinforced corners. Slow but very hard to kill.'
+  },
+  surveyor_web: {
+    id: 'surveyor_web', name: 'Surveyor Web', rows: 4, cols: 4, cost: 500, requires: 75,
+    stats: { detect: 10 },
+    mods: { '0,0': 'sensor', '1,1': 'sensor', '2,2': 'sensor', '3,3': 'sensor' },
+    color: '#a29bfe',
+    desc: 'Prospector frame — a diagonal lattice of sensor nodes threads detect through the whole build.'
+  },
+  reactor_cradle: {
+    id: 'reactor_cradle', name: 'Reactor Cradle', rows: 4, cols: 4, cost: 650, requires: 150,
+    stats: { heatGen: 2 },
+    mods: { '1,1': 'amplified', '1,2': 'amplified', '2,1': 'amplified', '2,2': 'amplified' },
+    color: '#ffb000',
+    desc: 'An amplified 2×2 heart — park your best parts dead center. The field bleeds a little heat.'
+  },
+  leviathan_hull: {
+    id: 'leviathan_hull', name: 'Leviathan Hull', rows: 4, cols: 5, cost: 900, requires: 150,
+    stats: { hp: 20, cargo: 5, speed: -0.3 },
+    mods: { '1,2': 'unstable', '2,2': 'unstable' },
+    color: '#636e72',
+    desc: 'A salvaged deep-hauler: huge, tough, roomy — but its cracked core column destabilizes anything placed over it.'
+  },
+  hammerhead: {
+    id: 'hammerhead', name: 'Hammerhead', rows: 4, cols: 5, cost: 350, requires: 25,
+    mask: [
+      'XXXXX',
+      '.XXX.',
+      '..X..',
+      '..X..'
+    ],
+    stats: { drillPower: 2, detect: 5 },
+    mods: { '0,0': 'sensor', '0,4': 'sensor', '2,2': 'conductive', '3,2': 'conductive' },
+    color: '#f39c12',
+    desc: 'T-shaped prospector hull — a wide sensor head over a powered drill spine. Awkward to pack, deadly straight down.'
+  },
+  star_fort: {
+    id: 'star_fort', name: 'Star Fort', rows: 5, cols: 5, cost: 800, requires: 150,
+    mask: [
+      '.XXX.',
+      'XXXXX',
+      'XXXXX',
+      'XXXXX',
+      '.XXX.'
+    ],
+    stats: { hp: 20, armor: 2, speed: -0.2 },
+    mods: { '0,2': 'reinforced', '2,0': 'reinforced', '2,4': 'reinforced', '4,2': 'reinforced', '2,2': 'amplified' },
+    color: '#00b894',
+    desc: 'A cut-corner bastion — reinforced bulwarks at every point and an amplified keep at its heart.'
+  },
+  scorpion: {
+    id: 'scorpion', name: 'Scorpion', rows: 4, cols: 6, cost: 1100, requires: 200,
+    mask: [
+      'XX.XX.',
+      'XXXXX.',
+      '.XXXXX',
+      '....XX'
+    ],
+    stats: { speed: 0.3, armor: 2 },
+    mods: { '0,0': 'reinforced', '0,3': 'reinforced', '3,4': 'conductive', '3,5': 'amplified' },
+    color: '#e74c3c',
+    desc: 'Segmented predator hull — armored claws, a quick body, and an amplified stinger at the tail tip.'
+  },
+  singularity_lattice: {
+    id: 'singularity_lattice', name: 'Singularity Lattice', rows: 5, cols: 5, cost: 1500, requires: 300,
+    stats: { heatGen: 4 },
+    mods: {
+      '2,2': 'amplified', '1,2': 'amplified', '3,2': 'amplified', '2,1': 'amplified', '2,3': 'amplified',
+      '0,0': 'unstable', '0,4': 'unstable', '4,0': 'unstable', '4,4': 'unstable'
+    },
+    color: '#8854d0',
+    desc: 'Endgame relic — an amplified cross at its heart, unstable void-scarred corners. The ultimate placement puzzle.'
+  }
+};
 
 DrillDown.RARITY_COLORS = {
   common: '#ffffff',

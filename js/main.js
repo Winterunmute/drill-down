@@ -7,7 +7,8 @@ DrillDown.Game = (() => {
   function defaultState() {
     return {
       gold: 100,
-      grid: Eng.createGrid(3, 4),
+      grid: Eng.createChassisGrid('scrap_frame'),
+      ownedChassis: ['scrap_frame'],
       inventory: ['basic_drill', 'small_fan', 'light_plating', 'cargo_pod'],
       fragments: {},
       recycleProgress: 0,
@@ -69,6 +70,7 @@ DrillDown.Game = (() => {
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         document.getElementById('shop-overlay')?.classList.remove('active');
+        document.getElementById('rig-overlay')?.classList.remove('active');
         UI.cancelDrag?.();
       }
       // R rotates the part being dragged, or the part card under the cursor
