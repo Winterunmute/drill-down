@@ -995,6 +995,24 @@ DrillDown.Engine = (() => {
       data.grid.chassis = 'scrap_frame';
       data.grid.mods = {};
     }
+    // Chassis footprints can grow between versions: re-stamp dims, zone cells, and hull
+    // voids from the current def so the equipped frame picks up the bigger size without
+    // a swap. Grow-only — pre-chassis saves may carry paid expansions beyond the def.
+    const chDef = DrillDown.CHASSIS[data.grid.chassis];
+    if (chDef && chDef.rows >= data.grid.rows && chDef.cols >= data.grid.cols &&
+        (chDef.rows !== data.grid.rows || chDef.cols !== data.grid.cols)) {
+      data.grid.rows = chDef.rows;
+      data.grid.cols = chDef.cols;
+      data.grid.mods = { ...(chDef.mods || {}) };
+      data.grid.voids = {};
+      if (chDef.mask) {
+        chDef.mask.forEach((rowStr, r) => {
+          for (let c = 0; c < rowStr.length; c++) {
+            if (rowStr[c] !== 'X') data.grid.voids[r + ',' + c] = true;
+          }
+        });
+      }
+    }
     if (!data.grid.mods || typeof data.grid.mods !== 'object') data.grid.mods = {};
     for (const key of Object.keys(data.grid.mods)) {
       const [r, c] = key.split(',').map(Number);
