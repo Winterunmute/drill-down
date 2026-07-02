@@ -732,113 +732,117 @@ DrillDown.CELL_MODS = {
 // nothing can be placed. Mask dimensions must match rows/cols.
 DrillDown.CHASSIS = {
   scrap_frame: {
-    id: 'scrap_frame', name: 'Scrap Frame', rows: 3, cols: 4, cost: 0,
+    id: 'scrap_frame', name: 'Scrap Frame', rows: 4, cols: 5, cost: 0,
     stats: {}, mods: {},
     color: '#d4a574',
     desc: 'Standard-issue starter frame. No innate stats, no zone cells — a blank slate.'
   },
   venting_lattice: {
-    id: 'venting_lattice', name: 'Venting Lattice', rows: 3, cols: 4, cost: 200,
+    id: 'venting_lattice', name: 'Venting Lattice', rows: 4, cols: 5, cost: 200,
     stats: { cooling: 3 },
-    mods: { '0,0': 'vented', '0,3': 'vented', '2,0': 'vented', '2,3': 'vented' },
+    mods: { '0,0': 'vented', '0,4': 'vented', '3,0': 'vented', '3,4': 'vented' },
     color: '#74b9ff',
     desc: 'Heat-dump frame for hot drill builds — innate cooling plus vented corner cells.'
   },
   drill_platform: {
-    id: 'drill_platform', name: 'Drill Platform', rows: 3, cols: 4, cost: 250,
+    id: 'drill_platform', name: 'Drill Platform', rows: 4, cols: 5, cost: 250,
     stats: { drillPower: 3, heatGen: 2 },
-    mods: { '0,1': 'conductive', '1,1': 'conductive', '2,1': 'conductive' },
+    mods: { '0,1': 'conductive', '1,1': 'conductive', '2,1': 'conductive', '3,1': 'conductive' },
     color: '#e67e22',
     desc: 'Power-feed spine down one column boosts drills placed along it. Runs a little hot.'
   },
   slipstream: {
-    id: 'slipstream', name: 'Slipstream', rows: 2, cols: 6, cost: 280,
+    id: 'slipstream', name: 'Slipstream', rows: 3, cols: 7, cost: 280,
     stats: { speed: 0.5 },
-    mods: { '0,5': 'sensor', '1,5': 'sensor' },
+    mods: { '0,6': 'sensor', '1,6': 'sensor', '2,6': 'sensor' },
     color: '#dfe6e9',
     desc: 'Slim scout hull — fewer slots, innate speed, sensor nodes in the nose. Built for fast shallow-loot runs.'
   },
   hauler_barge: {
-    id: 'hauler_barge', name: 'Hauler Barge', rows: 3, cols: 5, cost: 300,
+    id: 'hauler_barge', name: 'Hauler Barge', rows: 4, cols: 6, cost: 300,
     stats: { cargo: 6, speed: -0.1 },
-    mods: { '2,1': 'cargo_bay', '2,2': 'cargo_bay', '2,3': 'cargo_bay' },
+    mods: { '3,1': 'cargo_bay', '3,2': 'cargo_bay', '3,3': 'cargo_bay', '3,4': 'cargo_bay' },
     color: '#55efc4',
     desc: 'Wide freight frame with a cargo-bay keel. Heavy — drags on speed.'
   },
   bastion: {
-    id: 'bastion', name: 'Bastion', rows: 4, cols: 3, cost: 320,
+    id: 'bastion', name: 'Bastion', rows: 5, cols: 4, cost: 320,
     stats: { hp: 15, speed: -0.2 },
-    mods: { '0,0': 'reinforced', '0,2': 'reinforced', '3,0': 'reinforced', '3,2': 'reinforced' },
+    mods: { '0,0': 'reinforced', '0,3': 'reinforced', '4,0': 'reinforced', '4,3': 'reinforced' },
     color: '#a0a0a0',
     desc: 'Tall armored tower — innate HP and reinforced corners. Slow but very hard to kill.'
   },
   surveyor_web: {
-    id: 'surveyor_web', name: 'Surveyor Web', rows: 4, cols: 4, cost: 500, requires: 75,
+    id: 'surveyor_web', name: 'Surveyor Web', rows: 5, cols: 5, cost: 500, requires: 75,
     stats: { detect: 10 },
-    mods: { '0,0': 'sensor', '1,1': 'sensor', '2,2': 'sensor', '3,3': 'sensor' },
+    mods: { '0,0': 'sensor', '1,1': 'sensor', '2,2': 'sensor', '3,3': 'sensor', '4,4': 'sensor' },
     color: '#a29bfe',
     desc: 'Prospector frame — a diagonal lattice of sensor nodes threads detect through the whole build.'
   },
   reactor_cradle: {
-    id: 'reactor_cradle', name: 'Reactor Cradle', rows: 4, cols: 4, cost: 650, requires: 150,
+    id: 'reactor_cradle', name: 'Reactor Cradle', rows: 5, cols: 5, cost: 650, requires: 150,
     stats: { heatGen: 2 },
     mods: { '1,1': 'amplified', '1,2': 'amplified', '2,1': 'amplified', '2,2': 'amplified' },
     color: '#ffb000',
     desc: 'An amplified 2×2 heart — park your best parts dead center. The field bleeds a little heat.'
   },
   leviathan_hull: {
-    id: 'leviathan_hull', name: 'Leviathan Hull', rows: 4, cols: 5, cost: 900, requires: 150,
+    id: 'leviathan_hull', name: 'Leviathan Hull', rows: 5, cols: 6, cost: 900, requires: 150,
     stats: { hp: 20, cargo: 5, speed: -0.3 },
-    mods: { '1,2': 'unstable', '2,2': 'unstable' },
+    mods: { '1,2': 'unstable', '2,2': 'unstable', '3,2': 'unstable' },
     color: '#636e72',
     desc: 'A salvaged deep-hauler: huge, tough, roomy — but its cracked core column destabilizes anything placed over it.'
   },
   hammerhead: {
-    id: 'hammerhead', name: 'Hammerhead', rows: 4, cols: 5, cost: 350, requires: 25,
+    id: 'hammerhead', name: 'Hammerhead', rows: 5, cols: 6, cost: 350, requires: 25,
     mask: [
-      'XXXXX',
-      '.XXX.',
-      '..X..',
-      '..X..'
+      'XXXXXX',
+      '.XXXX.',
+      '..XX..',
+      '..XX..',
+      '..XX..'
     ],
     stats: { drillPower: 2, detect: 5 },
-    mods: { '0,0': 'sensor', '0,4': 'sensor', '2,2': 'conductive', '3,2': 'conductive' },
+    mods: { '0,0': 'sensor', '0,5': 'sensor', '2,2': 'conductive', '3,2': 'conductive', '4,2': 'conductive' },
     color: '#f39c12',
     desc: 'T-shaped prospector hull — a wide sensor head over a powered drill spine. Awkward to pack, deadly straight down.'
   },
   star_fort: {
-    id: 'star_fort', name: 'Star Fort', rows: 5, cols: 5, cost: 800, requires: 150,
+    id: 'star_fort', name: 'Star Fort', rows: 6, cols: 6, cost: 800, requires: 150,
     mask: [
-      '.XXX.',
-      'XXXXX',
-      'XXXXX',
-      'XXXXX',
-      '.XXX.'
+      '.XXXX.',
+      'XXXXXX',
+      'XXXXXX',
+      'XXXXXX',
+      'XXXXXX',
+      '.XXXX.'
     ],
     stats: { hp: 20, armor: 2, speed: -0.2 },
-    mods: { '0,2': 'reinforced', '2,0': 'reinforced', '2,4': 'reinforced', '4,2': 'reinforced', '2,2': 'amplified' },
+    mods: { '0,2': 'reinforced', '0,3': 'reinforced', '2,0': 'reinforced', '2,5': 'reinforced', '3,0': 'reinforced', '3,5': 'reinforced', '5,2': 'reinforced', '5,3': 'reinforced', '2,2': 'amplified', '2,3': 'amplified', '3,2': 'amplified', '3,3': 'amplified' },
     color: '#00b894',
     desc: 'A cut-corner bastion — reinforced bulwarks at every point and an amplified keep at its heart.'
   },
   scorpion: {
-    id: 'scorpion', name: 'Scorpion', rows: 4, cols: 6, cost: 1100, requires: 200,
+    id: 'scorpion', name: 'Scorpion', rows: 5, cols: 7, cost: 1100, requires: 200,
     mask: [
-      'XX.XX.',
-      'XXXXX.',
-      '.XXXXX',
-      '....XX'
+      'XXX.XXX',
+      'XXXXXX.',
+      '.XXXXXX',
+      '..XXXXX',
+      '....XXX'
     ],
     stats: { speed: 0.3, armor: 2 },
-    mods: { '0,0': 'reinforced', '0,3': 'reinforced', '3,4': 'conductive', '3,5': 'amplified' },
+    mods: { '0,0': 'reinforced', '0,6': 'reinforced', '4,5': 'conductive', '4,6': 'amplified' },
     color: '#e74c3c',
     desc: 'Segmented predator hull — armored claws, a quick body, and an amplified stinger at the tail tip.'
   },
   singularity_lattice: {
-    id: 'singularity_lattice', name: 'Singularity Lattice', rows: 5, cols: 5, cost: 1500, requires: 300,
+    id: 'singularity_lattice', name: 'Singularity Lattice', rows: 6, cols: 6, cost: 1500, requires: 300,
     stats: { heatGen: 4 },
     mods: {
       '2,2': 'amplified', '1,2': 'amplified', '3,2': 'amplified', '2,1': 'amplified', '2,3': 'amplified',
-      '0,0': 'unstable', '0,4': 'unstable', '4,0': 'unstable', '4,4': 'unstable'
+      '2,4': 'amplified', '4,2': 'amplified',
+      '0,0': 'unstable', '0,5': 'unstable', '5,0': 'unstable', '5,5': 'unstable'
     },
     color: '#8854d0',
     desc: 'Endgame relic — an amplified cross at its heart, unstable void-scarred corners. The ultimate placement puzzle.'
